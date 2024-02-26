@@ -27,7 +27,7 @@ from framework import DETECTORS, BaseDetector
 @DETECTORS.register()
 class LiteMedSAM(BaseDetector):
     def __init__(self,
-                cfg
+                settings,
                 ):
         
         super().__init__()

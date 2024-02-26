@@ -25,8 +25,24 @@ class Registry:
                 raise KeyError(f'{name} is already registered in {self.name}')
             self.modules[name] = module
         return module
+    
+    def get(self, key):
+        """Get the registry record.
+
+        Args:
+            key (str): The class name in string format.
+
+        Returns:
+            class: The corresponding class.
+        """
+        if not isinstance(key, str):
+            raise Exception('key for registry search {self.identity} must be string')
+        if key in self.modules.keys():
+            return self.modules[key]
+        else:
+            raise Exception(key + ' missing in registry ' + self.identity)
         
-def build_from_cfg(self, registry, cfg, default_args: Optional[Dict] = None):
+def build_from_cfg( registry: Registry, cfg, default_args: Optional[Dict] = None):
     if not isinstance(cfg, dict):
         raise TypeError(f'cfg must be a dict, but got {type(cfg)}')
     if 'type' not in cfg:
@@ -49,7 +65,7 @@ def build_from_cfg(self, registry, cfg, default_args: Optional[Dict] = None):
         obj_cls = registry.get(obj_type)
         if obj_cls is None:
             raise KeyError(
-                f'{obj_type} is not in the {registry.name} registry')
+                f'{obj_type} is not in the {registry.identity} registry')
     elif inspect.isclass(obj_type) or inspect.isfunction(obj_type):
         obj_cls = obj_type
     else:
