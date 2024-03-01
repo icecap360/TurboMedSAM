@@ -1,6 +1,8 @@
 import torch
 import models
 import datasets
+import os 
+from framework import ClassBalancedSampler
 
 model = models.LiteMedSAM(
         settings=dict(
@@ -42,12 +44,55 @@ model = models.LiteMedSAM(
             )
         )
     )
-dataset_type = 'MedSAM'
+
+optimizer = torch.optim.SGD(model.parameters(), lr=0.03)
+# lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+#     optimizer,
+#     mode='min',
+#     factor=0.9,
+#     patience=5,
+#     cooldown=0
+# )
+lr_scheduler = torch.optim.lr_scheduler.SequentialLR(
+    optimizer=optimizer, 
+    schedulers=[
+                torch.optim.lr_scheduler.ConstantLR(optimizer, factor=0.1, total_iters=2), 
+                torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)], 
+    milestones=[2])
+
+compute = dict(
+    gpu_id = 0,
+    use_cpu = False,
+    mp_start_method = 'fork',
+    opencv_num_threads=0,
+    cudnn_benchmark=False,
+    workers_per_gpu=4,
+    samples_per_gpu=4,
+    job_launcher = dict(
+        type=None, #['none', 'pytorch', 'slurm', 'mpi'],
+        dist_params = dict(backend='nccl', port=29515)
+        )
+    )
+
+work_dir = 'work_dir'
+exp_name = os.path.basename(__file__)
+resume_from = None
+eval_metrics = []
+loss = 
+checkpoint = ''
+resume = False
+custom_hooks = []
+seed = 0
+max_epochs = 48
+
+dataset_type = datasets.CVPRMedSAM
 data_root = '/pub4/qasim/MedSAM/split_npzs/'
 data = dict(
-    samples_per_gpu=4,
-    workers_per_gpu=4,
-    train=datasets.MedSAMDataset(,
+    sampler = ClassBalancedSampler,
+    subset_classes = None,
+    sampler_n_sample_per_classes = 1,
+    train=dict(
+        type=dataset_type,
         # classes=classes,
         data_root=data_root,
         pipeline=train_pipeline),
@@ -63,17 +108,3 @@ data = dict(
         ann_file='test.json',
         pipeline=test_pipeline))
 
-gpus = [0]
-eval_metrics = []
-loss = 
-optimizer = torch.optim.SGD(model.parameters(), lr=0.03)
-lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer,
-    mode='min',
-    factor=0.9,
-    patience=5,
-    cooldown=0
-)
-checkpoint = ''
-resume = False
-custom_hooks = []

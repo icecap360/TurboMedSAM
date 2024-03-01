@@ -7,23 +7,114 @@ import os
 from abc import ABC, abstractmethod 
 from BaseDataSamplers import ClassBalancedSampler
 from Registry import Registry, build_from_cfg
+from Distributed import get_dist_info
+from functools import partial
+from Logger import logger
+from packaging.version import parse
+import warnings
+import random
 
+def CreatePytorchDataloaders(data_settings, compute_settings, seed, is_distributed, split_type):
 
-def CreatePytorchDataloaders(data_settings, split_type, sampler=None):
-    data_dir = data_settings["data_root"]
-    dataset_type = data_settings["dataset_class"]
+    data_dir = data_settings[split_type]["data_root"]
+    dataset_type = data_settings[split_type]["dataset_class"]
+    rank, world_size = get_dist_info()
+    init_fn = partial(
+        worker_init_fn, num_workers=num_workers, rank=rank,
+        seed=seed) if seed is not None else None
+    
     dataset = dataset_type(data_dir, split_type, 
-                                 transform=data_settings[split_type+"_pipeline"], 
-                                 transform_target=data_settings[split_type+"_target_pipeline"])
+                                 transform=data_settings[split_type][split_type+"_pipeline"], 
+                                 transform_target=data_settings[split_type][split_type+"_target_pipeline"])
+    
+    sampler = data_settings["sampler"](dataset, 
+                                   compute_settings["samples_per_gpu"], 
+                                   num_replicas=world_size, 
+                                   rank=rank,
+                                   seed=seed,
+                                   num_sample_class=data_settings["sampler_n_sample_per_classes"],
+                                   subset_classes=data_settings["subset_classes"])
+    
+    if not (torch.__version__ != 'parrots'
+            and digit_version(torch.__version__) >= digit_version('1.7.0')):
+        logger.warn('persistent_workers is invalid because your pytorch '
+                      'version is lower than 1.7.0')
+    
+    if is_distributed:
+        # When model is :obj:`DistributedDataParallel`,
+        # `batch_size` of :obj:`dataloader` is the
+        # number of training samples on each GPU.
+        batch_size = compute_settings["samples_per_gpu"]
+        num_workers = compute_settings["workers_per_gpu"]
+    else:
+        # When model is obj:`DataParallel`
+        # the batch size is samples on all the GPUS
+        num_gpus = len(compute_settings["gpu_ids"])
+        batch_size = num_gpus * compute_settings["samples_per_gpu"]
+        num_workers = num_gpus * compute_settings["workers_per_gpu"]
+    
     data_loader = DataLoader(dataset, 
-                             batch_size=data_settings["batch_size"],
+                             batch_size=batch_size,
                              shuffle=True,
                              sampler=sampler,
-                             pin_memory=data_settings["pin_memory"],
-                             drop_last=data_settings["drop_last"],
-                             num_workers=data_settings["num_workers"],
-                             prefetch_factor=data_settings["prefetch_factor"],
-                             persistent_workers=data_settings["persistent_workers"]
+                             pin_memory=compute_settings["pin_memory"],
+                             drop_last=compute_settings["drop_last"],
+                             num_workers=compute_settings["num_workers"],
+                             prefetch_factor=compute_settings["prefetch_factor"],
+                             persistent_workers=compute_settings["persistent_workers"],
+                             worker_init_fn=init_fn,
+                            #  collate_fn=partial(collate, samples_per_gpu=compute_settings["samples_per_gpu"],
                              )
+    return data_loader
 
 
+
+
+def worker_init_fn(worker_id, num_workers, rank, seed):
+    # The seed of each worker equals to
+    # num_worker * rank + worker_id + user_seed
+    worker_seed = num_workers * rank + worker_id + seed
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+    torch.manual_seed(worker_seed)
+    
+    
+def digit_version(version_str: str, length: int = 4):
+    """Convert a version string into a tuple of integers.
+
+    This method is usually used for comparing two versions. For pre-release
+    versions: alpha < beta < rc.
+
+    Args:
+        version_str (str): The version string.
+        length (int): The maximum number of version levels. Default: 4.
+
+    Returns:
+        tuple[int]: The version info in digits (integers).
+    """
+    assert 'parrots' not in version_str
+    version = parse(version_str)
+    assert version.release, f'failed to parse version {version_str}'
+    release = list(version.release)
+    release = release[:length]
+    if len(release) < length:
+        release = release + [0] * (length - len(release))
+    if version.is_prerelease:
+        mapping = {'a': -3, 'b': -2, 'rc': -1}
+        val = -4
+        # version.pre can be None
+        if version.pre:
+            if version.pre[0] not in mapping:
+                logger.warn(f'unknown prerelease version {version.pre[0]}, '
+                              'version checking may go wrong')
+            else:
+                val = mapping[version.pre[0]]
+            release.extend([val, version.pre[-1]])
+        else:
+            release.extend([val, 0])
+
+    elif version.is_postrelease:
+        release.extend([1, version.post])  # type: ignore
+    else:
+        release.extend([0, 0])
+    return tuple(release)

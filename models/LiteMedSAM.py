@@ -32,7 +32,7 @@ class LiteMedSAM(BaseDetector):
         
         super().__init__()
         
-        encoder_cfg = cfg['image_encoder']
+        encoder_cfg = settings['image_encoder']
         self.image_encoder = TinyViT(
             img_size=encoder_cfg['img_size'],
             in_chans=encoder_cfg['in_chans'],
@@ -49,7 +49,7 @@ class LiteMedSAM(BaseDetector):
             layer_lr_decay=encoder_cfg['layer_lr_decay']
         )
         
-        decoder_cfg = cfg['mask_decoder']
+        decoder_cfg = settings['mask_decoder']
         self.mask_decoder = MaskDecoder(
             num_multimask_outputs=decoder_cfg['num_multimask_outputs'],
             transformer=TwoWayTransformer(
@@ -63,7 +63,7 @@ class LiteMedSAM(BaseDetector):
             iou_head_hidden_dim=decoder_cfg['iou_head_hidden_dim'],
         )
         
-        prompt_encoder_cfg = cfg['prompt_encoder']
+        prompt_encoder_cfg = settings['prompt_encoder']
         self.prompt_encoder = PromptEncoder(
             embed_dim=prompt_encoder_cfg['embed_dim'],
             image_embedding_size=prompt_encoder_cfg['image_embedding_size'],

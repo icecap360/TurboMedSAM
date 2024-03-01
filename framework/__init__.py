@@ -4,3 +4,7 @@ from BaseModules import *
 from BaseDataloader import *
 from BaseDataSamplers import *
 from BaseDataset import *
+from Config import *
+from Distributed import *
+from Logger import *
+from Runner import *
