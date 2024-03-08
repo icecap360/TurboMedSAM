@@ -5,12 +5,12 @@ from torch.utils.data import Dataset, DataLoader, sampler
 import glob
 import os
 from abc import ABC, abstractmethod 
-from BaseDataSamplers import ClassBalancedSampler
 
 class BaseDataset(ABC, Dataset):
 
     @abstractmethod
     def __init__(self, root_dir, split_type, transform=None, transform_target=None):
+        super(BaseDataset, self).__init__()
         self.root_dir = root_dir
         self.split_type = split_type
         self.transform = transform

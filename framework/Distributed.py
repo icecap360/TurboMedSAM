@@ -25,6 +25,16 @@ def init_dist(backend, rank, world_size):
     #     _init_dist_slurm(backend, **kwargs)
     # else:
     #     raise ValueError(f'Invalid launcher type: {launcher}')
+    if os.environ.get('MASTER_ADDR') is None:
+        raise Exception('Missing MASTER_ADDR')
+        os.environ["MASTER_ADDR"] = "localhost"
+    if os.environ.get('MASTER_PORT') is None:
+        raise Exception('Missing MASTER_PORT')
+        os.environ["MASTER_PORT"] = "29501"
+    if not os.environ.get('RANK') is None:
+        rank = int(os.environ.get('RANK'))
+    if not os.environ.get('WORLD_SIZE') is None:
+        world_size = int(os.environ.get('WORLD_SIZE'))
     dist.init_process_group(backend=backend, 
                             rank=rank,
                             world_size=world_size)
@@ -37,14 +47,9 @@ def _init_dist_pytorch(backend, **kwargs):
     dist.init_process_group(backend=backend, **kwargs)
 
 def set_visible_devices(device=None):
-    if device is None:
-        rank = int(os.environ['RANK'])
-        num_gpus = torch.cuda.device_count()
-        torch.cuda.set_device(rank % num_gpus)
-    else:
-        torch.cuda.set_device(device)
+    torch.cuda.set_device(device)
         
-def get_device():
+def get_device(use_cpu = False):
     """Returns an available device, cpu, cuda or mlu."""
     is_device_available = {
         'npu': hasattr(torch, 'npu') and torch.npu.is_available(),
@@ -52,7 +57,10 @@ def get_device():
         'mlu': hasattr(torch, 'is_mlu_available') and torch.is_mlu_available()
     }
     device_list = [k for k, v in is_device_available.items() if v]
-    return device_list[0] if len(device_list) >= 1 else 'cpu'
+    if use_cpu:
+        return 'cpu'
+    else:
+        return device_list[0] if len(device_list) >= 1 else 'cpu'
 
 def init_random_seed(seed=None, device='cuda'):
     """Initialize random seed.
@@ -155,11 +163,7 @@ def setup_multi_processes(compute_cfg):
 
     # setup OMP threads
     # This code is referred from https://github.com/pytorch/pytorch/blob/master/torch/distributed/run.py  # noqa
-    workers_per_gpu = compute_cfg.data.get('workers_per_gpu', 1)
-    if 'train_dataloader' in compute_cfg.data:
-        workers_per_gpu = \
-            max(compute_cfg.data.train_dataloader.get('workers_per_gpu', 1),
-                workers_per_gpu)
+    workers_per_gpu = compute_cfg.get('workers_per_gpu', 1)
 
     if 'OMP_NUM_THREADS' not in os.environ and workers_per_gpu > 1:
         omp_num_threads = 1

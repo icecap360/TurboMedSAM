@@ -1,1 +1,2 @@
-from datasets.CVPRMedSAM import *
+from .CVPRMedSAM import *
+from .SampleDataset import *

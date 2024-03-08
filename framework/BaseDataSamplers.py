@@ -6,7 +6,7 @@ import glob
 import os
 import torch.distributed as dist
 import math 
-from BaseDataset import BaseDataset
+from .BaseDataset import BaseDataset
 
 class ClassBalancedSampler(sampler.Sampler):
     r"""Makes sure each class is sampled from equally.
@@ -68,7 +68,8 @@ class ClassBalancedSampler(sampler.Sampler):
                  seed=0,
                  subset_classes=None,
                  shuffle=True,
-                 num_sample_class=1):
+                 num_sample_class=1,
+                 **kwargs):
         
         if num_replicas is None:
             if not dist.is_available():
@@ -122,6 +123,8 @@ class ClassBalancedSampler(sampler.Sampler):
         self.prev_generator_seed = self.seed
         self.indices = []
         self.generate_indices(self.seed)
+        
+        super(ClassBalancedSampler, self).__init__()
     
     def gen_cat_img_inds(self, cls_list, data_dict, num_sample_cls):
             """Traverse the categories and extract `num_sample_cls` image

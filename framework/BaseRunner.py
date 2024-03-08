@@ -5,17 +5,24 @@ from torch.utils.data import Dataset, DataLoader, sampler
 import glob
 import os
 from abc import ABC, abstractmethod, ABCMeta 
-from BaseDataSamplers import ClassBalancedSampler
-from Registry import Registry, build_from_cfg
+from .BaseDataSamplers import ClassBalancedSampler
 import time 
-from Distributed import get_dist_info
-from Hook import Hook
+from .Distributed import get_dist_info, get_host_info
+from .Hook import Hook
 from collections import OrderedDict
 import re
 import shutil
 from typing import (Any, Callable, Dict, List, Optional, Tuple, Union, no_type_check)
-from BaseModules import BaseModule
-from Logger import Logger
+from .BaseModules import BaseModule
+from .Logger import Logger
+from .BaseScheduler import BaseScheduler
+from .BaseLoss import BaseLoss
+from .BaseMetric import BaseMetric
+from tqdm import tqdm
+import torch.distributed as dist
+from .utils import CustomDict, multi_gpu_test, single_gpu_test, dict_to_device, len_dict, collect_results_cpu, collect_results_gpu
+from copy import deepcopy
+import tempfile
 
 class BaseRunner(metaclass=ABCMeta):
     """The base class of Runner, a training helper for PyTorch.
@@ -50,26 +57,36 @@ class BaseRunner(metaclass=ABCMeta):
     def __init__(self,
                  model: BaseModule,
                  optimizer: torch.optim,
-                 loss,
-                 metrics,
+                 loss: BaseLoss,
+                 metric: BaseMetric,
+                 lr_scheduler: BaseScheduler,
+                 device,
                  work_dir,
                  logger: Logger,
+                 grad_clip : dict,
+                 distributed,
+                 use_cpu=False,
+                 broadcast_bn_buffer = True,
                  val_freq=1,
                  save_freq=1,
                  save_optimizer=False,
                  max_iters=None,
                  max_epochs=None):
         
-        assert hasattr(model, 'train_step')
-
         self.model = model
         self.optimizer = optimizer
         self.logger = logger
         self.loss = loss
-        self.metrics = metrics
+        self.lr_scheduler = lr_scheduler
+        self.metrics = metric
         self.val_freq = val_freq
         self.save_freq = save_freq
         self.save_optimizer = save_optimizer
+        self.grad_clip = grad_clip 
+        self.distributed = distributed
+        self.use_cpu = use_cpu
+        self.device = device
+        self.broadcast_bn_buffer = broadcast_bn_buffer
         
         # create work_dir
         if isinstance(work_dir, str):
@@ -143,7 +160,7 @@ class BaseRunner(metaclass=ABCMeta):
         return self._max_iters
 
     @abstractmethod
-    def train(self):
+    def train_epoch(self):
         pass
 
     @abstractmethod
@@ -186,8 +203,7 @@ class BaseRunner(metaclass=ABCMeta):
         return momentums
 
     def register_hook(self,
-                      hook,
-                      priority) -> None:
+                      hook) -> None:
         self._hooks.append(hook)
 
     def call_hook(self, fn_name: str) -> None:
@@ -207,13 +223,26 @@ class BaseRunner(metaclass=ABCMeta):
         strict: bool = True,
         revise_keys = [] #[(r'^module.', '')],
     ):
-        return self.model.load_checkpoint(
-            filename,
+        checkpoint = torch.load(filename, 
+                                map_location=map_location,
+                                )
+        
+        if not isinstance(checkpoint, dict):
+            raise RuntimeError(
+                f'No state_dict found in checkpoint file {filename}')
+            
+        if 'state_dict' in checkpoint:
+            model_state_dict = checkpoint['state_dict']
+        else:
+            model_state_dict = checkpoint 
+             
+        self.model.load_checkpoint(
+            model_state_dict,
             logger = self.logger,
-            map_location = map_location,
             strict = strict,
             revise_keys = revise_keys)
         
+        return checkpoint
         # state_dict = torch.load(filename, 
         #                         map_location=map_location,
         #                         )
@@ -236,11 +265,21 @@ class BaseRunner(metaclass=ABCMeta):
         # self.model.load_state_dict(state_dict, strict= strict)
         # load_state_dict(model, state_dict, strict, logger)
         # return checkpoint
-
+        
+    def log_info(self, message):
+        if not self.distributed or (self.distributed and self._rank == 0):
+            self.logger.log(message)
+    def log_train(self, message):
+        if self._rank == 0:
+            self.logger.info(message)
+        else:
+            self.logger.print_screen(message)
+            
     @no_type_check
     def resume(self,
                checkpoint: str,
                resume_optimizer: bool = True,
+               resume_lr_scheduler: bool = True,
                map_location: Union[str, Callable] = 'default'):
         if map_location == 'default':
             checkpoint = self.load_checkpoint(checkpoint)
@@ -274,8 +313,10 @@ class BaseRunner(metaclass=ABCMeta):
 
         if 'optimizer' in checkpoint and resume_optimizer:
             self.optimizer.load_state_dict(checkpoint['optimizer'])
+        if 'lr_scheduler' in checkpoint and resume_lr_scheduler:
+            self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             
-        self.logger.info('resumed epoch %d, iter %d', self.epoch, self.iter)
+        self.log_info('resumed epoch {}, iter {}'.format(self._epoch, self._iter))
         
     def get_hook_info(self) -> str:
         # Get hooks info in each stage
@@ -299,195 +340,6 @@ class BaseRunner(metaclass=ABCMeta):
                 info += '\n -------------------- '
                 stage_hook_infos.append(info)
         return '\n'.join(stage_hook_infos)
+    
 
-
-class EpochBasedRunner(BaseRunner):
-    """Epoch-based Runner.
-
-    This runner train models epoch by epoch.
-    """
-
-    def run_iter(self, data_batch: Any, train_mode: bool, **kwargs) -> None:
-        if train_mode:
-            self.model.train()
-            outputs = self.model(data_batch,
-                                **kwargs)
-        else:
-            self.model.eval()
-            outputs = self.model(data_batch, **kwargs)
-        if not isinstance(outputs, dict):
-            raise TypeError('"model forward must return a dict')
-        self.outputs = outputs
-
-    def train(self, data_loader):
-        
-        self.data_loader = data_loader
-        self._max_iters = self._max_epochs * len(self.data_loader)
-        self.call_hook('before_train_epoch')
-        time.sleep(2)  # Prevent possible deadlock during epoch transition
-        
-        for i, data_batch in enumerate(self.data_loader):
-            self.data_batch = data_batch
-            self._inner_iter = i
-            self.call_hook('before_train_iter')
-            
-            self.model.train()
-            self.preds = self.model(data_batch)
-            loss_dict, total_loss = self.loss.forward(self.preds)
-            self.logger.train_step(
-                epoch=self.epoch,
-                max_epoch=self._max_epochs,
-                batch_index=i*len(data_batch),
-                total_batches=len(self.data_loader),
-                lr=self.current_lr(),
-                loss_dict=loss_dict,
-                total_loss = total_loss
-            )
-            total_loss.backward()
-            self.optimizer.step()
-            self.optimizer.zero_grad()
-            
-            
-            
-            
-            self.run_iter(data_batch, train_mode=True, **kwargs)
-            self.call_hook('after_train_iter')
-            del self.data_batch
-            self._iter += 1
-
-        self.call_hook('after_train_epoch')
-        self._epoch += 1
-
-    @torch.no_grad()
-    def val(self, data_loader):
-        self.data_loader = data_loader
-        self.call_hook('before_val_epoch')
-        time.sleep(2)  # Prevent possible deadlock during epoch transition
-        for i, data_batch in enumerate(self.data_loader):
-            self.data_batch = data_batch
-            self._inner_iter = i
-            self.call_hook('before_val_iter')
-            # run_iter valvulates the loss
-            self.run_iter(data_batch, train_mode=False, **kwargs)
-            # now we calculate the metrics
-            
-            self.call_hook('after_val_iter')
-            del self.data_batch
-        self.call_hook('after_val_epoch')
-
-    def run(self,
-            data_loader_train: DataLoader,
-            data_loader_val: DataLoader,
-            max_epochs: Optional[int] = None,
-            ) -> None:
-        """Start running.
-
-        Args:
-            data_loaders (list[:obj:`DataLoader`]): Dataloaders for training
-                and validation.
-            workflow (list[tuple]): A list of (phase, epochs) to specify the
-                running order and epochs. E.g, [('train', 2), ('val', 1)] means
-                running 2 epochs for training and 1 epoch for validation,
-                iteratively.
-        """
-        if max_epochs is not None:
-            self.logger.warnings.warn(
-                'setting max_epochs in run is deprecated, '
-                'please set max_epochs in runner_config', DeprecationWarning)
-            self._max_epochs = max_epochs
-
-        assert self._max_epochs is not None, (
-            'max_epochs must be specified during instantiation')
-
-        if self.mode == 'train':
-            self._max_iters = self._max_epochs * len(data_loader_train)
-
-        work_dir = self.work_dir 
-        
-        self.logger.info('Start running, host: %s, work_dir: %s',
-                         (), work_dir)
-        self.logger.info('Hooks will be executed in the following order:\n%s',
-                         self.get_hook_info())
-        self.logger.info('max: %d epochs',
-                         self._max_epochs)
-        self.call_hook('before_run')
-
-        while self.epoch < self._max_epochs:
-            data_loader_train.sampler.set_epoch(self.epoch)
-            self.train(data_loader=data_loader_train)
-            
-            data_loader_val.sampler.set_epoch(self.epoch)
-            if self.epoch % self.val_freq == 0:
-                self.val(data_loader=data_loader_val,)
-            
-            if self.epoch % self.save_freq == 0:
-                self.save_checkpoint(self, self.work_dir)
-            self.epoch += 1
-
-        time.sleep(1)  # wait for some hooks like loggers to finish
-        self.call_hook('after_run')
-
-    def save_checkpoint(self,
-                        out_dir: str,
-                        filename_tmpl: str = 'epoch_{}.pth',
-                        save_optimizer: bool = True,
-                        meta: Optional[Dict] = None,
-                        create_symlink: bool = True) -> None:
-        """Save the checkpoint.
-
-        Args:
-            out_dir (str): The directory that checkpoints are saved.
-            filename_tmpl (str, optional): The checkpoint filename template,
-                which contains a placeholder for the epoch number.
-                Defaults to 'epoch_{}.pth'.
-            save_optimizer (bool, optional): Whether to save the optimizer to
-                the checkpoint. Defaults to True.
-            meta (dict, optional): The meta information to be saved in the
-                checkpoint. Defaults to None.
-            create_symlink (bool, optional): Whether to create a symlink
-                "latest.pth" to point to the latest checkpoint.
-                Defaults to True.
-        """
-        if meta is None:
-            meta = {}
-        elif not isinstance(meta, dict):
-            raise TypeError(
-                f'meta should be a dict or None, but got {type(meta)}')
-        
-        if self.meta is not None:
-            meta.update(self.meta)
-            # Note: meta.update(self.meta) should be done before
-            # meta.update(epoch=self.epoch + 1, iter=self.iter) otherwise
-            # there will be problems with resumed checkpoints.
-            # More details in https://github.com/open-mmlab/mmcv/pull/1108
-        meta.update(epoch=self.epoch + 1, iter=self.iter)
-
-        filename = filename_tmpl.format(self.epoch + 1)
-        filepath = os.path.join(out_dir, filename)
-        optimizer = self.optimizer if save_optimizer else None
-        self.save_checkpoint(self, filepath,save_optimizer, optimizer=optimizer, meta=meta)
-        # in some environments, `os.symlink` is not supported, you may need to
-        # set `create_symlink` to False
-        if create_symlink:
-            dst_file = os.path.join(out_dir, 'latest.pth')
-            try:
-                os.symlink(filepath, dst_file)
-            except:
-                shutil.copy(filepath, dst_file)
-                
-
-    def save_checkpoint(self, filepath, save_optimizer, meta=None):
-        if hasattr(self.model, 'CLASSES') and self.model.CLASSES is not None:
-            # save class name to the meta
-            meta.update(CLASSES=self.model.CLASSES)
-        
-        checkpoint = {
-            'meta': meta,
-            'state_dict': weights_to_cpu(get_state_dict(model))  # type: ignore
-        }
-        
-        if save_optimizer:
-            checkpoint['optimizer'] = self.optimizer.state_dict()
-        
-        torch.save(checkpoint, filepath)
-        
+    

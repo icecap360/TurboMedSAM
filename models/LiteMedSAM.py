@@ -1,6 +1,5 @@
 import os
 import random
-import monai
 from os import listdir, makedirs
 from os.path import join, exists, isfile, isdir, basename
 from glob import glob
@@ -14,17 +13,15 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from datetime import datetime
 
-from projects.LiteMedSAM.segment_anything.modeling import MaskDecoder, PromptEncoder, TwoWayTransformer
-from projects.LiteMedSAM.tiny_vit_sam import TinyViT
+from .projects.LiteMedSAM.segment_anything.modeling import MaskDecoder, PromptEncoder, TwoWayTransformer
+from .projects.LiteMedSAM.tiny_vit_sam import TinyViT
 import cv2
 import torch.nn.functional as F
 
 from matplotlib import pyplot as plt
 import argparse
-from framework import DETECTORS, BaseDetector
+from framework import BaseDetector
 
-
-@DETECTORS.register()
 class LiteMedSAM(BaseDetector):
     def __init__(self,
                 settings,

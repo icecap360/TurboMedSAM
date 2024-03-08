@@ -7,7 +7,7 @@ import os
 import torch.distributed as dist
 from framework import BaseDataset
 
-class CVPRMedSAM(BaseDataset):
+class CVPRMedSAMDataset(BaseDataset):
     """Face Landmarks dataset."""
 
     def __init__(self, root_dir, split_type, transform=None, transform_target=None):

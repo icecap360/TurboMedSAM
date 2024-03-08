@@ -5,35 +5,39 @@ from torch.utils.data import Dataset, DataLoader, sampler
 import glob
 import os
 from abc import ABC, abstractmethod 
-from BaseDataSamplers import ClassBalancedSampler
-from Registry import Registry, build_from_cfg
-from Distributed import get_dist_info
+from .BaseDataSamplers import ClassBalancedSampler
+from .Distributed import get_dist_info
 from functools import partial
-from Logger import logger
+from .Logger import logger
 from packaging.version import parse
 import warnings
 import random
+from copy import deepcopy
+from torchvision import transforms
+
 
 def CreatePytorchDataloaders(data_settings, compute_settings, seed, is_distributed, split_type):
 
     data_dir = data_settings[split_type]["data_root"]
-    dataset_type = data_settings[split_type]["dataset_class"]
+    dataset_type = data_settings[split_type]["type"]
     rank, world_size = get_dist_info()
     init_fn = partial(
-        worker_init_fn, num_workers=num_workers, rank=rank,
+        worker_init_fn, num_workers=compute_settings['workers_per_gpu'], rank=rank,
         seed=seed) if seed is not None else None
+    split_settings = data_settings[split_type]
+    dataset = dataset_type(root_dir=data_dir, 
+                           split_type = split_type, 
+                            transform = split_settings.get("input_pipeline") or transforms.ToTensor(), 
+                            transform_target = split_settings.get("target_pipeline") or transforms.ToTensor()
+            )
     
-    dataset = dataset_type(data_dir, split_type, 
-                                 transform=data_settings[split_type][split_type+"_pipeline"], 
-                                 transform_target=data_settings[split_type][split_type+"_target_pipeline"])
-    
-    sampler = data_settings["sampler"](dataset, 
-                                   compute_settings["samples_per_gpu"], 
-                                   num_replicas=world_size, 
-                                   rank=rank,
-                                   seed=seed,
-                                   num_sample_class=data_settings["sampler_n_sample_per_classes"],
-                                   subset_classes=data_settings["subset_classes"])
+    sampler_settings = deepcopy(data_settings["sampler"])
+    sampler_type = sampler_settings.pop('type')
+    sampler = sampler_type(dataset, 
+                        num_replicas=world_size, 
+                        rank=rank,
+                        seed=seed,
+                        **sampler_settings)
     
     if not (torch.__version__ != 'parrots'
             and digit_version(torch.__version__) >= digit_version('1.7.0')):
@@ -49,17 +53,19 @@ def CreatePytorchDataloaders(data_settings, compute_settings, seed, is_distribut
     else:
         # When model is obj:`DataParallel`
         # the batch size is samples on all the GPUS
-        num_gpus = len(compute_settings["gpu_ids"])
-        batch_size = num_gpus * compute_settings["samples_per_gpu"]
-        num_workers = num_gpus * compute_settings["workers_per_gpu"]
+        # num_gpus = len(compute_settings["gpu_ids"])
+        # batch_size = num_gpus * compute_settings["samples_per_gpu"]
+        # num_workers = num_gpus * compute_settings["workers_per_gpu"]
+        # I don't support DataParallel, I use 1 GPU in the nonparallel case so num_gpus is always 1
+        batch_size = compute_settings["samples_per_gpu"]
+        num_workers = compute_settings["workers_per_gpu"]
     
     data_loader = DataLoader(dataset, 
                              batch_size=batch_size,
-                             shuffle=True,
                              sampler=sampler,
                              pin_memory=compute_settings["pin_memory"],
-                             drop_last=compute_settings["drop_last"],
-                             num_workers=compute_settings["num_workers"],
+                             drop_last=data_settings["drop_last"],
+                             num_workers=compute_settings["workers_per_gpu"], # I don't support DataParallel, I use 1 GPU in the nonparallel case so num_gpus is always 1
                              prefetch_factor=compute_settings["prefetch_factor"],
                              persistent_workers=compute_settings["persistent_workers"],
                              worker_init_fn=init_fn,

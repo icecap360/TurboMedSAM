@@ -7,12 +7,12 @@ from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
 import re 
 from typing import Callable, Dict, List, Optional, Tuple, Union
-from Distributed import get_dist_info
+from .Distributed import get_dist_info
 
 
 class BaseModule(nn.Module, metaclass=ABCMeta):
     def __init__(self, init_cfg: Optional[dict] = None):
-        super().__init__()
+        super(BaseModule, self).__init__()
         # define default value of init_cfg instead of hard code
         # in init_weights() function
         self._is_init = False
@@ -21,13 +21,13 @@ class BaseModule(nn.Module, metaclass=ABCMeta):
         
         self.initialize()
     
-    @abstractmethod
-    def forward_loss(self, data_batch) -> Dict:
-        pass
+    # @abstractmethod
+    # def forward_loss(self, data_batch) -> Dict:
+    #     pass
     
-    @abstractmethod
-    def forward_pred(self, data_batch) -> Dict:
-        pass
+    # @abstractmethod
+    # def forward_pred(self, data_batch) -> Dict:
+    #     pass
     
     def initialize(self):
         self.init_weights()
@@ -48,39 +48,20 @@ class BaseModule(nn.Module, metaclass=ABCMeta):
             s += f'\ninit_cfg={self.init_cfg}'
         return s
     
-    def forward(self, img, img_metas, return_loss=True, **kwargs):
-        """Calls either :func:`forward_train` or :func:`forward_test` depending
-        on whether ``return_loss`` is ``True``.
-
-        Note this setting will change the expected inputs. When
-        ``return_loss=True``, img and img_meta are single-nested (i.e. Tensor
-        and List[dict]), and when ``resturn_loss=False``, img and img_meta
-        should be double nested (i.e.  List[Tensor], List[List[dict]]), with
-        the outer list indicating test time augmentations.
+    @abstractmethod
+    def forward(self, data_batch):
         """
-        if return_loss:
-            return self.forward_loss(img, img_metas, **kwargs)
-        else:
-            return self.forward_pred(img, img_metas, **kwargs)
+        This function simply returns the predictions in s list format (i.e. each prediction sample should be its own disctionary ) 
+        """
+        pass
     
     def load_checkpoint(
         self,
-        filename: str,
+        state_dict: dict,
         logger,
-        map_location = 'cpu',
         strict: bool = True,
         revise_keys = [] #[(r'^module.', '')],
     ):
-        state_dict = torch.load(filename, 
-                                map_location=map_location,
-                                )
-        if not isinstance(state_dict, dict):
-            raise RuntimeError(
-                f'No state_dict found in checkpoint file {filename}')
-        # get state_dict from checkpoint
-        if 'state_dict' in state_dict:
-            state_dict = state_dict['state_dict']
-        
         # strip prefix of state_dict
         metadata = getattr(state_dict, '_metadata', ())
         for p, r in revise_keys:
@@ -93,7 +74,7 @@ class BaseModule(nn.Module, metaclass=ABCMeta):
         self.load_state_dict(self.model, state_dict, strict, logger)
         return state_dict
     
-    def load_state_dict(self, state_dict: os.Mapping[str, os.Any], logger, strict: bool = True):
+    def load_state_dict(self, state_dict, logger, strict: bool = True):
         unexpected_keys: List[str] = []
         all_missing_keys: List[str] = []
         err_msg: List[str] = []
