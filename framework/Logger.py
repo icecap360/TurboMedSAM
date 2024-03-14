@@ -23,7 +23,8 @@ class Logger:
             writer.write('EXP NAME:'+ exp_name+ '\n')
             writer.write('CONFIG USED\n')
             writer.writelines(cfg_str)
-            print('Config\n', cfg_str)
+            for line in cfg_str:
+                print(line, end='')
         
         self.start_time = time.time()
         self.initialized = True

@@ -33,7 +33,6 @@ class EpochBasedRunner(BaseRunner):
     def train_epoch(self, data_loader: DataLoader):
         self._max_iters = self._max_epochs * len(data_loader)
         self.call_hook('before_train_epoch')
-        rank, _ = get_dist_info()
         time.sleep(2)  # Prevent possible deadlock during epoch transition
         self.model.train()
         data_loader.sampler.set_epoch(self._epoch) 
@@ -87,7 +86,7 @@ class EpochBasedRunner(BaseRunner):
         if self._epoch % self.save_freq == 0:
             if self.distributed:
                 dist.barrier()
-                if rank != 0:
+                if self._rank != 0:
                     dist.barrier()
                 else:
                     self.save_checkpoint(
@@ -172,13 +171,12 @@ class EpochBasedRunner(BaseRunner):
         self.call_hook('before_val_epoch')
         self.log_info('\nVALIDATING\n')
         time.sleep(2)  # Prevent possible deadlock during epoch transition
-        rank, _ = get_dist_info()
         self.model.eval()
         # predictions, labels = self.qasim_result_collect(data_loader)
         
         loss_dict, metrics_dict = self.get_results(data_loader, gpu_collect=True)
         
-        if self.distributed and rank != 0:
+        if self.distributed and self._rank != 0:
             dist.barrier()
         else:
             weighted_sum_loss = self.loss.calc_weighted_loss(loss_dict, self.loss.loss_weight, requires_grad=False, device=self.device)
@@ -196,7 +194,7 @@ class EpochBasedRunner(BaseRunner):
                     )
             self.log_info(val_message)
         
-        if self.distributed and rank == 0:
+        if self.distributed and self._rank == 0:
             dist.barrier()
         
         self.call_hook('after_val_epoch')

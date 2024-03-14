@@ -3,6 +3,9 @@ import models
 import datasets
 import os 
 from framework import ClassBalancedSampler, BaseScheduler
+import losses
+import metrics
+from torchvision import transforms
 
 model = models.LiteMedSAM(
         settings=dict(
@@ -45,32 +48,22 @@ model = models.LiteMedSAM(
             )
         )
 
-optimizer = torch.optim.SGD(model.parameters(), lr=0.03)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
 grad_clip = dict(max_norm=35, norm_type=2)
-base_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer,
-    mode='min',
-    factor=0.9,
-    patience=5,
-    cooldown=0
-)
 lr_scheduler = BaseScheduler(
-    regular_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    regular_scheduler = torch.optim.lr_scheduler.MultiStepLR(
             optimizer,
-            mode='min',
-            factor=0.9,
-            patience=5,
-            cooldown=0
+            milestones=[48,96],
+            gamma=0.1
         ),
     optimizer=optimizer,
-    warmup=True,
+    warmup='none',
     warmup_iters=500,
     warmup_ratio=0.1
-    )
+)
 
 compute = dict(
-    gpu_id = [0],
-    pin_memory=True,
+    gpu_ids = [0],
     use_cpu = False,
     mp_start_method = 'fork',
     opencv_num_threads=0,
@@ -79,9 +72,10 @@ compute = dict(
     samples_per_gpu=4,
     pin_memory=False,
     prefetch_factor=2,
+    broadcast_bn_buffer=True,
     persistent_workers=False,
     job_launcher = dict(
-        type='pytorch', #['none', 'pytorch', 'slurm', 'mpi'],
+        type='none', #['none', 'pytorch', 'slurm', 'mpi'],
         dist_params = dict(backend='nccl', port=29515)
         )
     )
@@ -92,13 +86,20 @@ resume_from = None
 eval_metrics = []
 val_freq = 1
 save_freq = 1
-loss = 
+loss = losses.MedSAMLoss({
+    'loss_seg': 1.0,
+    'loss_ce': 1.0,
+})
+metric = metrics.SampleMetric(loss)
 checkpoint = ''
 resume = False
 custom_hooks = []
 seed = 0
-max_epochs = 48
+max_epochs = 1
 
+pipeline = transforms.Compose(
+    transforms.ToTensor()
+)
 dataset_type = datasets.CVPRMedSAMDataset
 data_root = '/pub4/qasim/MedSAM/split_npzs/'
 data = dict(
@@ -112,16 +113,16 @@ data = dict(
         type=dataset_type,
         # classes=classes,
         data_root=data_root,
-        pipeline=train_pipeline),
+        pipeline=pipeline),
     val=dict(
         type=dataset_type,
         # classes=classes,
         data_root=data_root,
-        pipeline=test_pipeline),
+        pipeline=pipeline),
     test=dict(
         type=dataset_type,
         # classes=classes,
         data_root=data_root,
         ann_file='test.json',
-        pipeline=test_pipeline))
+        pipeline=pipeline))
 

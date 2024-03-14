@@ -93,6 +93,7 @@ class ClassBalancedSampler(sampler.Sampler):
         self.num_sample_class = num_sample_class
         self.shuffle = shuffle
         self.seed = seed
+        self.num_samples = len(self.dataset)
 
         self.n_samples_per_process = int(
             math.ceil(
@@ -124,7 +125,7 @@ class ClassBalancedSampler(sampler.Sampler):
         self.indices = []
         self.generate_indices(self.seed)
         
-        super(ClassBalancedSampler, self).__init__()
+        super(ClassBalancedSampler, self).__init__(None)
     
     def gen_cat_img_inds(self, cls_list, data_dict, num_sample_cls):
             """Traverse the categories and extract `num_sample_cls` image

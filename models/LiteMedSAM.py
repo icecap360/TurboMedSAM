@@ -22,6 +22,7 @@ from matplotlib import pyplot as plt
 import argparse
 from framework import BaseDetector
 
+
 class LiteMedSAM(BaseDetector):
     def __init__(self,
                 settings,

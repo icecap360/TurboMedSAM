@@ -48,7 +48,7 @@ def main(args):
         raise Exception('Training for CPU is not supported')
     
     # init distributed env first, since logger depends on the dist info.
-    if cfg.compute['job_launcher']['type'] is None:
+    if cfg.compute['job_launcher']['type'] == 'none':
         distributed = False
     else:
         distributed = True

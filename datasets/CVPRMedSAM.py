@@ -36,6 +36,7 @@ class CVPRMedSAMDataset(BaseDataset):
         # gts = [npz['gts'] for npz in npzs]
         
         npz_path = self.npz_paths[idx]
+        return {'path': npz_path}, {'path':npz_path}
         # classes = npz_path.split_type('/')[0]
         npz = np.load(npz_path, allow_pickle=True, mmap_mode="r")
         image = npz['imgs'] 
@@ -63,6 +64,6 @@ class CVPRMedSAMDataset(BaseDataset):
             cat2imgs[class_i] = [i for i,path in enumerate(self.npz_paths) if search in path]
         return cat2imgs
     def get_categories(self):
-        pass
+        return self.classes
     
 
