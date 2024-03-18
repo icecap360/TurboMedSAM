@@ -8,7 +8,7 @@ from collections import OrderedDict
 import re 
 from typing import Callable, Dict, List, Optional, Tuple, Union
 from .Distributed import get_dist_info
-
+import logging
 
 class BaseModule(nn.Module, metaclass=ABCMeta):
     def __init__(self, init_cfg: Optional[dict] = None):
@@ -16,10 +16,7 @@ class BaseModule(nn.Module, metaclass=ABCMeta):
         # define default value of init_cfg instead of hard code
         # in init_weights() function
         self._is_init = False
-
         self.init_cfg = copy.deepcopy(init_cfg)
-        
-        self.initialize()
     
     # @abstractmethod
     # def forward_loss(self, data_batch) -> Dict:
@@ -51,14 +48,13 @@ class BaseModule(nn.Module, metaclass=ABCMeta):
     @abstractmethod
     def forward(self, data_batch):
         """
-        This function simply returns the predictions in s list format (i.e. each prediction sample should be its own disctionary ) 
+        This function simply returns the predictions in list format (i.e. each prediction sample should be its own disctionary ) 
         """
         pass
     
     def load_checkpoint(
         self,
         state_dict: dict,
-        logger,
         strict: bool = True,
         revise_keys = [] #[(r'^module.', '')],
     ):
@@ -71,10 +67,10 @@ class BaseModule(nn.Module, metaclass=ABCMeta):
         # Keep metadata in state_dict
         state_dict._metadata = metadata
         
-        self.load_state_dict(self.model, state_dict, strict, logger)
+        self.load_state_dict(self.model, state_dict, strict)
         return state_dict
     
-    def load_state_dict(self, state_dict, logger, strict: bool = True):
+    def load_state_dict(self, state_dict, strict: bool = True):
         unexpected_keys: List[str] = []
         all_missing_keys: List[str] = []
         err_msg: List[str] = []
@@ -101,7 +97,7 @@ class BaseModule(nn.Module, metaclass=ABCMeta):
             #     if child is not None:
             #         load_module(child, prefix + name + '.')
 
-        load_module(self.model)
+        load_module(self)
         # ignore "num_batches_tracked" of BN layers
         missing_keys = [
             key for key in all_missing_keys if 'num_batches_tracked' not in key
@@ -122,7 +118,7 @@ class BaseModule(nn.Module, metaclass=ABCMeta):
             if strict:
                 raise RuntimeError(err_msg)
             else:
-                logger.warning(err_msg)            
+                logging.warning(err_msg)            
             
             return super().load_state_dict(state_dict, strict)
 

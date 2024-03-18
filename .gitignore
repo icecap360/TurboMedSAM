@@ -26,6 +26,8 @@ share/python-wheels/
 *.egg
 MANIFEST
 work_dir/
+drawn_sample_paths.txt
+checkpoints/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

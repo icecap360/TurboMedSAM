@@ -26,9 +26,10 @@ from framework import BaseDetector
 class LiteMedSAM(BaseDetector):
     def __init__(self,
                 settings,
+                init_cfg=None,
                 ):
         
-        super().__init__()
+        super().__init__(init_cfg)
         
         encoder_cfg = settings['image_encoder']
         self.image_encoder = TinyViT(
@@ -52,9 +53,9 @@ class LiteMedSAM(BaseDetector):
             num_multimask_outputs=decoder_cfg['num_multimask_outputs'],
             transformer=TwoWayTransformer(
                 depth=decoder_cfg['transformer_depth'],
-                embedding_dim=decoder_cfg['transformer_embeddim'],
-                mlp_dim=decoder_cfg['mlp_dim'],
-                num_heads=decoder_cfg['num_heads'],
+                embedding_dim=decoder_cfg['transformer_embedding_dim'],
+                mlp_dim=decoder_cfg['transformer_mlp_dim'],
+                num_heads=decoder_cfg['transformer_num_heads'],
             ),
             transformer_dim=decoder_cfg['transformer_dim'],
             iou_head_depth=decoder_cfg['iou_head_depth'],
@@ -68,8 +69,10 @@ class LiteMedSAM(BaseDetector):
             input_image_size=prompt_encoder_cfg['input_image_size'],
             mask_in_chans=prompt_encoder_cfg['mask_in_chans']
             )
-        
-    def forward(self, image, boxes):
+                
+    def forward(self, input_params):
+        image = input_params['image']
+        boxes = input_params['bbox']
         image_embedding = self.image_encoder(image) # (B, 256, 64, 64)
 
         sparse_embeddings, dense_embeddings = self.prompt_encoder(
@@ -85,7 +88,10 @@ class LiteMedSAM(BaseDetector):
             multimask_output=False,
           ) # (B, 1, 256, 256)
 
-        return low_res_masks, iou_predictions
+        return {
+            "logits": low_res_masks, 
+            "iou": iou_predictions
+        }
 
     @torch.no_grad()
     def postprocess_masks(self, masks, new_size, original_size):

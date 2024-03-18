@@ -10,7 +10,7 @@ class BaseScheduler(_LRScheduler):
     Implements iter based warmup for the scheduler class
     '''
     def __init__(self, 
-                 regular_scheduler: _LRScheduler,
+                 regular_scheduler,
                  optimizer, 
                  last_epoch=-1, 
                  verbose=False, 

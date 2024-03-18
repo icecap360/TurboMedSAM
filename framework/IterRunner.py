@@ -4,6 +4,7 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader, sampler
 import glob
 import os
+import GPUtil
 from abc import ABC, abstractmethod, ABCMeta 
 from .BaseDataSamplers import ClassBalancedSampler
 import time 
@@ -25,10 +26,10 @@ from copy import deepcopy
 import tempfile
 from .BaseRunner import BaseRunner
 
-class EpochBasedRunner(BaseRunner):
-    """Epoch-based Runner.
+class IterBasedRunner(BaseRunner):
+    """Iter-based Runner.
 
-    This runner train models epoch by epoch.
+    This runner train models by batch step.
     """
     def __init__(self,
                  model: BaseModule,
@@ -41,13 +42,16 @@ class EpochBasedRunner(BaseRunner):
                  logger: Logger,
                  grad_clip : dict,
                  distributed,
+                 max_iters,
                  use_cpu=False,
                  broadcast_bn_buffer = True,
-                 val_freq_epoch=1,
+                 val_freq_iter=1,
                  save_freq=1,
                  save_optimizer=False,
-                 max_epochs=None):
-        self.val_freq_epoch = val_freq_epoch
+                 ):
+        self.val_freq_iter = val_freq_iter
+        self.sentinal = 'END'
+        self.samples_processed = 0
         super().__init__(model=model,
                  optimizer=optimizer,
                  loss=loss,
@@ -62,61 +66,53 @@ class EpochBasedRunner(BaseRunner):
                  broadcast_bn_buffer=broadcast_bn_buffer,
                  save_freq=save_freq,
                  save_optimizer=save_optimizer,
-                 max_iters=None,
-                 max_epochs=max_epochs)
-
-    def train_epoch(self, data_loader: DataLoader):
-        self.call_hook('before_train_epoch')
-        time.sleep(2)  # Prevent possible deadlock during epoch transition
+                 max_iters=max_iters,
+                 max_epochs=None)
+    
+    def train_iter(self, inputs, targets):
         self.model.train()
+                    
+        batch_size = len_dict(inputs)
+        targets = dict_to_device(targets, self.device)
+        inputs = dict_to_device(inputs, self.device)
+        self.call_hook('before_train_iter')
+            
+        self.optimizer.zero_grad()
+        if self._rank == 0:
+            GPUtil.showUtilization()
+        preds = self.model(inputs)
+            
+        loss_dict = self.loss.forward_loss(preds, targets)
+            
+        weighted_sum_loss = self.loss.calc_weighted_loss(loss_dict, self.loss.loss_weight, requires_grad=True, device=self.device)
+            
+        float_loss_dict = {key: value.item() for key, value in loss_dict.items()}
+        float_weighted_sum_loss = weighted_sum_loss.item()
+            
+        self.samples_processed += batch_size
         
-        samples_processed = 0
-        for i, data_batch in enumerate(data_loader):
-            inputs, targets = data_batch[0], data_batch[1]
-            batch_size = len_dict(inputs)
-            targets = dict_to_device(targets, self.device)
-            inputs = dict_to_device(inputs, self.device)
-            self._inner_iter = i
-            self.call_hook('before_train_iter')
-            
-            self.optimizer.zero_grad()
-            preds = self.model(inputs)
-            
-            loss_dict = self.loss.forward_loss(preds, targets)
-            
-            weighted_sum_loss = self.loss.calc_weighted_loss(loss_dict, self.loss.loss_weight, requires_grad=True, device=self.device)
-            
-            float_loss_dict = {key: value.item() for key, value in loss_dict.items()}
-            float_weighted_sum_loss = weighted_sum_loss.item()
-            
-            samples_processed += batch_size
-            
-            train_message = self.logger.train_epoch_message(
-                    epoch = self._epoch+1,
+        train_message = self.logger.train_iter_message(
                     rank = self._rank,
-                    max_epoch = self._max_epochs,
-                    samples_processed = samples_processed,
-                    total_samples = len(data_loader.sampler),
+                    iters=self._iter,
+                    max_iters = self._max_iters,
                     lr = self.current_lr(),
                     loss_dict = float_loss_dict,
                     total_loss = float_weighted_sum_loss
                 )
-            self.log_train(train_message)
+        self.log_train(train_message)
             
-            weighted_sum_loss.backward()
-            torch.nn.utils.clip_grad_norm_(
+        weighted_sum_loss.backward()
+        torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(), 
                 max_norm = self.grad_clip['max_norm'], 
                 norm_type = self.grad_clip['norm_type'])
-            self.optimizer.step()
-            self.lr_scheduler.step_iter()
-            
-            self.call_hook('after_train_iter')
-            del data_batch, inputs, preds, batch_size
-            self._iter += 1
+        self.optimizer.step()
+        self.lr_scheduler.step_iter()
         
+        self.call_hook('after_train_iter')
+
         self.lr_scheduler.step()
-        if self._epoch % self.save_freq == 0:
+        if self._iter % self.save_freq == 0:
             if self.distributed:
                 dist.barrier()
                 if self._rank != 0:
@@ -142,9 +138,9 @@ class EpochBasedRunner(BaseRunner):
         self.log_info_and_print('\nVALIDATING\n')
         time.sleep(2)  # Prevent possible deadlock during epoch transition
         self.model.eval()
-        
+
         loss_dict, metrics_dict = self.get_results(data_loader, gpu_collect=True)
-            
+        
         if self.distributed and self._rank != 0:
             dist.barrier()
         else:
@@ -154,10 +150,10 @@ class EpochBasedRunner(BaseRunner):
             float_metrics_dict = {key: value.item() for key, value in metrics_dict.items()}
             float_weighted_sum_loss = weighted_sum_loss.item()
             
-            val_message = self.logger.val_epoch_message(
+            val_message = self.logger.val_iter_message(
                         loader_name = data_loader.get_name(),
-                        epoch = self._epoch + 1,
-                        max_epoch = self._max_epochs,
+                        iters=self._iter,
+                        max_iters = self._max_iters,
                         loss_dict = float_loss_dict,
                         total_loss = float_weighted_sum_loss,
                         metrics_dict = float_metrics_dict
@@ -171,7 +167,7 @@ class EpochBasedRunner(BaseRunner):
 
     def run(self,
             data_loader_train: DataLoader,
-            data_loader_val: DataLoader,
+            data_loader_val: list,
             ) -> None:
         """Start running.
 
@@ -184,26 +180,38 @@ class EpochBasedRunner(BaseRunner):
                 iteratively.
         """
 
-        assert self._max_epochs is not None, (
-            'max_epochs must be specified during instantiation')
+        assert self._max_iters is not None, (
+            'max_iters must be specified during instantiation')
 
         work_dir = self.work_dir 
         
         self.log_info_and_print('Start running, host: {}, work_dir: {}'.format(get_host_info(), work_dir))
         self.log_info_and_print('Hooks will be executed in the following order:\n{}'.format(self.get_hook_info()))
-        self.log_info_and_print('max: {} epochs'.format(self._max_epochs))
+        self.log_info_and_print('max: {} iters'.format(self._max_iters))
         self.call_hook('before_run')
 
-        while self._epoch < self._max_epochs:
-            data_loader_train.sampler.set_epoch(self._epoch)
-            self.train_epoch(data_loader=data_loader_train)
-            for loader in data_loader_val:
-                loader.sampler.set_epoch(self._epoch)
-            if self._epoch % self.val_freq_epoch == 0:
-                for loader in data_loader_val:
-                    self.val(data_loader=loader,)
+        data_loader_train_iter = iter(data_loader_train)
+        self.call_hook('before_train_epoch')
+        while self._iter < self._max_iters:
+            self._iter += 1
+            data_batch = next(data_loader_train_iter, self.sentinal)
             
-            self._epoch += 1
+            if type(data_batch) == type(self.sentinal) and data_batch == self.sentinal:
+                self.call_hook('after_train_epoch')
+                self._epoch += 1
+                data_loader_train.sampler.set_epoch(self._epoch)
+                for loader in data_loader_val:
+                    loader.sampler.set_epoch(self._epoch)
+                self.call_hook('before_train_epoch')
+                data_loader_train_iter = iter(data_loader_train)
+                data_batch = next(data_loader_train_iter, self.sentinal)
+
+            inputs, targets = data_batch
+            self.train_iter(inputs, targets)
+            
+            if self._iter % self.val_freq_iter == 0:
+                for loader in data_loader_val:
+                    self.val(data_loader=loader)
 
         time.sleep(1)  # wait for some hooks like loggers to finish
         self.call_hook('after_run')

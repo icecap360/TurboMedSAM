@@ -46,7 +46,7 @@ class BaseLoss( ABC):
         return  weighted_sum_loss
     
         
-    def sum_loss(self, loss_dicts, device):
+    def average_loss(self, loss_dicts, device):
         '''
         Calculates the total_loss across all processes
         This should be executed after forward function.
@@ -54,8 +54,8 @@ class BaseLoss( ABC):
         '''
         sum_loss_dict = dict()
         for k in loss_dicts[0].keys():
-            sum_loss_dict[k] = torch.sum(torch.stack([
-                    loss_dicts[j][k].to(device) for j in range(len(loss_dicts))
+            sum_loss_dict[k] = torch.mean(torch.cat([
+                    loss_dicts[j][k].reshape(1).to(device) for j in range(len(loss_dicts))
                 ]))
         return sum_loss_dict
     

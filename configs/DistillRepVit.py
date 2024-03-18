@@ -9,46 +9,33 @@ import metrics
 import pipelines
 from torchvision import transforms
 import dataloaders
+from functools import partial
+import savers
 
-model = models.LiteMedSAM(
-        settings=dict(
-            image_encoder=dict(
-                img_size=256,
-                in_chans=3,
-                embed_dims=[
-                    64, ## (64, 256, 256)
-                    128, ## (128, 128, 128)
-                    160, ## (160, 64, 64)
-                    320 ## (320, 64, 64) 
-                ],
-                depths=[2, 2, 6, 2],
-                num_heads=[2, 4, 5, 10],
-                window_sizes=[7, 7, 14, 7],
-                mlp_ratio=4.,
-                drop_rate=0.,
-                drop_path_rate=0.0,
-                use_checkpoint=False,
-                mbconv_expand_ratio=4.0,
-                local_conv_size=3,
-                layer_lr_decay=0.8
-                ),
-            prompt_encoder=dict(
-                embed_dim=256,
-                image_embedding_size=(64, 64),
-                input_image_size=(256, 256),
-                mask_in_chans=16
-                ),
-            mask_decoder=dict(
-                num_multimask_outputs=3,
-                transformer_depth=2,
-                transformer_embedding_dim=256,
-                transformer_mlp_dim=2048,
-                transformer_num_heads=8,
-                transformer_dim=256,
-                iou_head_depth=3,
-                iou_head_hidden_dim=256,
-                )
-            )
+encoder_embed_dim=768
+encoder_depth=12
+encoder_num_heads=12
+encoder_global_attn_indexes=[2, 5, 8, 11]
+prompt_embed_dim = 256
+image_size = 256
+vit_patch_size = 16
+model = models.ViTMedSAM(
+        depth=encoder_depth,
+        embed_dim=encoder_embed_dim,
+        img_size=image_size,
+        mlp_ratio=4,
+        norm_layer=partial(torch.nn.LayerNorm, eps=1e-6),
+        num_heads=encoder_num_heads,
+        patch_size=vit_patch_size,
+        qkv_bias=True,
+        use_rel_pos=True,
+        global_attn_indexes=encoder_global_attn_indexes,
+        window_size=14,
+        out_chans=prompt_embed_dim,
+        init_cfg = {
+            "type": "pretrained",
+            "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/medsam_image_encoder_256.pth"
+        }
         )
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
@@ -73,13 +60,13 @@ compute = dict(
     opencv_num_threads=0,
     cudnn_benchmark=False,
     workers_per_gpu=4,
-    samples_per_gpu=8,
+    samples_per_gpu=4,
     pin_memory=False,
     prefetch_factor=2,
     broadcast_bn_buffer=True,
     persistent_workers=False,
     job_launcher = dict(
-        type='none', #['none', 'pytorch', 'slurm', 'mpi'],
+        type='pytorch', #['none', 'pytorch', 'slurm', 'mpi'],
         dist_params = dict(backend='nccl', port=29515)
         )
     )
@@ -107,7 +94,7 @@ seed = 0
 
 data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
 pipeline_type = pipelines.CVPRMedSAMPipeline(
-    target_length=256,
+    target_length=image_size,
     bbox_shift=5
 )
 data = dict(
@@ -144,12 +131,17 @@ data = dict(
     ),
     inference=dict(
         dataset = dict(       
-            type = datasets.CVPRMedSAMInferenceDataset,
+            type = datasets.CVPRMedSAMEncoderDataset,
             # classes=classes,
             root_dir='/pub4/qasim/MedSAM/split_npzs_3chnl/',
-            pipeline=pipeline_type.pipeline_inference),
+            pipeline=pipeline_type.pipeline_encoder_inference),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type = basic_dataloader_creator)
     ),
 )
 
+saver = dict(
+    type = savers.CVPRMedSAMSaver,
+    subdirectory = 'results',
+    keys = ['embeddings']
+)

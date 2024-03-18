@@ -15,29 +15,7 @@ import random
 from copy import deepcopy
 from torchvision import transforms
 
-
-def CreatePytorchDataloaders(data_settings, compute_settings, seed, is_distributed, split_type):
-
-    data_dir = data_settings[split_type]["data_root"]
-    dataset_type = data_settings[split_type]["type"]
-    rank, world_size = get_dist_info()
-    init_fn = partial(
-        worker_init_fn, num_workers=compute_settings['workers_per_gpu'], rank=rank,
-        seed=seed) if seed is not None else None
-    split_settings = data_settings[split_type]
-    dataset = dataset_type(root_dir=data_dir, 
-                           split_type = split_type, 
-                            transform = split_settings.get("input_pipeline") or transforms.ToTensor(), 
-                            transform_target = split_settings.get("target_pipeline") or transforms.ToTensor()
-            )
-    
-    sampler_settings = deepcopy(data_settings["sampler"])
-    sampler_type = sampler_settings.pop('type')
-    sampler = sampler_type(dataset, 
-                        num_replicas=world_size, 
-                        rank=rank,
-                        seed=seed,
-                        **sampler_settings)
+def create_dataloader(data_settings, compute_settings, seed, is_distributed, split_type):
     
     if not (torch.__version__ != 'parrots'
             and digit_version(torch.__version__) >= digit_version('1.7.0')):
@@ -60,21 +38,91 @@ def CreatePytorchDataloaders(data_settings, compute_settings, seed, is_distribut
         batch_size = compute_settings["samples_per_gpu"]
         num_workers = compute_settings["workers_per_gpu"]
     
-    data_loader = DataLoader(dataset, 
-                             batch_size=batch_size,
-                             sampler=sampler,
-                             pin_memory=compute_settings["pin_memory"],
-                             drop_last=data_settings["drop_last"],
-                             num_workers=compute_settings["workers_per_gpu"], # I don't support DataParallel, I use 1 GPU in the nonparallel case so num_gpus is always 1
-                             prefetch_factor=compute_settings["prefetch_factor"],
-                             persistent_workers=compute_settings["persistent_workers"],
-                             worker_init_fn=init_fn,
-                            #  collate_fn=partial(collate, samples_per_gpu=compute_settings["samples_per_gpu"],
-                             )
-    return data_loader
+    dataloader_settings = data_settings[split_type]['dataloader_creator']
+    dataloader_creator = dataloader_settings.pop('type')
+    return dataloader_creator(data_settings = data_settings,
+                           compute_settings=compute_settings,
+                           seed = seed,
+                           is_distributed = is_distributed,
+                           split_type = split_type,
+                           batch_size = batch_size,
+                           **dataloader_settings)
 
+class BaseDataLoader(torch.utils.data.DataLoader):
+    def __init__(self, dataset, batch_size, sampler, pin_memory, workers_per_gpu, prefetch_factor, persistent_workers, init_fn, name='Basic', drop_last=False):
+        self.name = name
+        super().__init__(dataset, 
+                            batch_size=batch_size,
+                            sampler=sampler,
+                            pin_memory=pin_memory,
+                            drop_last=drop_last,
+                            num_workers=workers_per_gpu, # I don't support DataParallel, I use 1 GPU in the nonparallel case so num_gpus is always 1
+                            prefetch_factor=prefetch_factor,
+                            persistent_workers=persistent_workers,
+                            worker_init_fn=init_fn,
+                        #  collate_fn=partial(collate, samples_per_gpu=compute_settings["samples_per_gpu"],)
+        )
+    def get_name(self):
+        return self.name
+    
+def basic_dataloader_creator(data_settings, compute_settings, seed, is_distributed, split_type, batch_size, drop_last=False,name='Basic'):
+    if is_distributed:
+        rank, world_size = get_dist_info()
+    else:
+        rank, world_size = 0, 1
+    init_fn = partial(
+        worker_init_fn, 
+        num_workers=compute_settings['workers_per_gpu'], 
+        rank=rank,
+        seed=seed) if seed is not None else None
+    
+    dataset_settings = deepcopy(data_settings[split_type]['dataset'])
+    dataset_type = dataset_settings.pop("type")
+    dataset = dataset_type( split_type = split_type, 
+                        **dataset_settings
+            )
+    
+    sampler_settings = deepcopy(data_settings[split_type]["sampler"])
+    sampler_type = sampler_settings.pop('type')
+    sampler = sampler_type(dataset, 
+                        num_replicas=world_size, 
+                        rank=rank,
+                        seed=seed,
+                        **sampler_settings)
 
+    return BaseDataLoader(dataset, 
+                        batch_size=batch_size,
+                        sampler=sampler,
+                        pin_memory=compute_settings["pin_memory"],
+                        workers_per_gpu=compute_settings["workers_per_gpu"], # I don't support DataParallel, I use 1 GPU in the nonparallel case so num_gpus is always 1
+                        prefetch_factor=compute_settings["prefetch_factor"],
+                        persistent_workers=compute_settings["persistent_workers"],
+                        init_fn=init_fn,
+                        name=name,
+                        drop_last=drop_last
+                    #  collate_fn=partial(collate, samples_per_gpu=compute_settings["samples_per_gpu"],)
+    )
 
+class ListDataLoader():
+    def __init__(self, loaders):
+        self.loaders = loaders
+        self.current_index = 0
+    def __iter__(self):
+        self.current_index = 0
+        return self
+    def __len__(self):
+        return len(self.loaders)
+    def __next__(self):
+        if self.current_index < len(self.loaders):
+            loader = self.loaders[self.current_index]
+            self.current_index += 1
+            return loader
+        else:
+            raise StopIteration
+
+def basic_val_dataloader_creator(data_settings, compute_settings, seed, is_distributed, split_type, batch_size, name='Basic', drop_last=False):
+        loaders = [basic_dataloader_creator(data_settings, compute_settings, seed, is_distributed, split_type, batch_size, name=name, drop_last=drop_last )]
+        return ListDataLoader(loaders)
 
 def worker_init_fn(worker_id, num_workers, rank, seed):
     # The seed of each worker equals to

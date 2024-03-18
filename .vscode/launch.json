@@ -5,20 +5,33 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Distributed Torch",
+            "name": "Train Distributed",
             "type": "python",
             "request": "launch",
             // we launch a module...
             "module":"torch.distributed.launch",
             // with args...
             "args":["--use_env","--nproc_per_node=3","--master_addr=127.0.0.1",
-            "--master_port=29500","train.py", "Sample.py"],
+            "--master_port=29500","train.py", "CVPRMedSAM.py"],
             "console": "integratedTerminal",
             "justMyCode": false
         },
 
         {
-            "name": "train.py",
+            "name": "Infer Distributed",
+            "type": "python",
+            "request": "launch",
+            // we launch a module...
+            "module":"torch.distributed.launch",
+            // with args...
+            "args":["--use_env","--nproc_per_node=3","--master_addr=127.0.0.1",
+            "--master_port=29500","inference.py", "MedSAMEncoder.py", "--save_result=True"],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+
+        {
+            "name": "Train",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/train.py",

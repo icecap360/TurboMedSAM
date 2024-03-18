@@ -7,9 +7,6 @@ from framework import add_loss, convert_loss_float, BaseMetric
 
 class SimpleMedSAMMetrics(BaseMetric):
 
-    def __init__(self, loss):
-        self.loss = loss
-        
     def get_metrics(self, pred, target, device) -> dict:
         return {
             'metric1': torch.tensor([1.0], device=device).reshape((1,1))

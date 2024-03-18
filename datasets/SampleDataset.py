@@ -10,7 +10,7 @@ from framework import BaseDataset
 class SampleDataset(BaseDataset):
     """Face Landmarks dataset."""
 
-    def __init__(self, root_dir, split_type, transform=None, transform_target=None):
+    def __init__(self, split_type, pipeline=None, input_transform=None, target_transform=None):
         """
         Arguments:
             csv_file (string): Path to the csv file with annotations.
@@ -18,7 +18,7 @@ class SampleDataset(BaseDataset):
             transform (callable, optional): Optional transform to be applied
                 on a sample.
         """
-        super().__init__(None, split_type, transform, transform_target)
+        super().__init__(split_type, pipeline, input_transform, target_transform)
         
         if split_type is 'train':
             self.data = np.linspace(0, 999, 1000) + np.random.normal(scale=0.1)
@@ -34,7 +34,8 @@ class SampleDataset(BaseDataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        return {'input': np.float32(self.data[idx])}, {'output': np.float32(self.label[idx])}
+        return self.transform_databatch({'input': np.float32(self.data[idx])},
+                                        {'output': np.float32(self.label[idx])}, {'idx': idx})
     
     def get_cat2indices(self):
         raise NotImplementedError()
@@ -43,3 +44,13 @@ class SampleDataset(BaseDataset):
         raise NotImplementedError()
     
 
+def sample_pipeline(inputs, meta):
+    new_inputs = {}
+    for key, value in inputs.items():
+        if type(value) in (np.array, float):
+            new_inputs[key] = torch.tensor(value)
+        else:
+            # If the value is not a tensor, keep it as is
+            new_inputs[key] = value
+    new_inputs['meta'] = meta
+    return new_inputs

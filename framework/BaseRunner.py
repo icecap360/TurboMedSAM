@@ -67,7 +67,6 @@ class BaseRunner(metaclass=ABCMeta):
                  distributed,
                  use_cpu=False,
                  broadcast_bn_buffer = True,
-                 val_freq=1,
                  save_freq=1,
                  save_optimizer=False,
                  max_iters=None,
@@ -79,7 +78,6 @@ class BaseRunner(metaclass=ABCMeta):
         self.loss = loss
         self.lr_scheduler = lr_scheduler
         self.metrics = metric
-        self.val_freq = val_freq
         self.save_freq = save_freq
         self.save_optimizer = save_optimizer
         self.grad_clip = grad_clip 
@@ -159,9 +157,6 @@ class BaseRunner(metaclass=ABCMeta):
         """int: Maximum training iterations."""
         return self._max_iters
 
-    @abstractmethod
-    def train_epoch(self):
-        pass
 
     @abstractmethod
     def val(self):
@@ -171,13 +166,72 @@ class BaseRunner(metaclass=ABCMeta):
     def run(self, data_loaders, **kwargs):
         pass
 
-    @abstractmethod
     def save_checkpoint(self,
                         out_dir: str,
-                        filename_tmpl: str,
+                        filename_tmpl: str = 'epoch_{}.pth',
                         save_optimizer: bool = True,
+                        save_scheduler: bool = True,
+                        meta: Optional[Dict] = None,
                         create_symlink: bool = True) -> None:
-        pass
+        """Save the checkpoint.
+
+        Args:
+            out_dir (str): The directory that checkpoints are saved.
+            filename_tmpl (str, optional): The checkpoint filename template,
+                which contains a placeholder for the epoch number.
+                Defaults to 'epoch_{}.pth'.
+            save_optimizer (bool, optional): Whether to save the optimizer to
+                the checkpoint. Defaults to True.
+            meta (dict, optional): The meta information to be saved in the
+                checkpoint. Defaults to None.
+            create_symlink (bool, optional): Whether to create a symlink
+                "latest.pth" to point to the latest checkpoint.
+                Defaults to True.
+        """
+        if meta is None:
+            meta = {}
+        elif not isinstance(meta, dict):
+            raise TypeError(
+                f'meta should be a dict or None, but got {type(meta)}')
+        
+        # if self.meta is not None:
+            # meta.update(self.meta)
+            # Note: meta.update(self.meta) should be done before
+            # meta.update(epoch=self.epoch + 1, iter=self.iter) otherwise
+            # there will be problems with resumed checkpoints.
+            # More details in https://github.com/open-mmlab/mmcv/pull/1108
+        meta.update(epoch=self._epoch + 1, iter=self._iter)
+
+        filename = filename_tmpl.format(self._epoch + 1)
+        filepath = os.path.join(out_dir, filename)
+        optimizer = self.optimizer if save_optimizer else None
+        
+        if hasattr(self.model, 'CLASSES') and self.model.CLASSES is not None:
+            # save class name to the meta
+            meta.update(CLASSES=self.model.CLASSES)
+        
+        checkpoint = {
+            'meta': meta,
+            'state_dict': self.model.state_dict(),  # type: ignore
+        }
+        
+        if save_optimizer:
+            checkpoint['optimizer'] = self.optimizer.state_dict()
+        if save_scheduler:
+            checkpoint['lr_scheduler'] = self.lr_scheduler.state_dict()
+
+        torch.save(checkpoint, filepath)
+        
+        # in some environments, `os.symlink` is not supported, you may need to
+        # set `create_symlink` to False
+        if create_symlink:
+            dst_file = os.path.join(out_dir, 'latest.pth')
+            if os.path.exists(dst_file):
+                os.remove(dst_file)
+            try:
+                os.symlink(filepath, dst_file)
+            except:
+                shutil.copy(filepath, dst_file, )
 
     def current_lr(self):
         lr = [group['lr'] for group in self.optimizer.param_groups]
@@ -266,14 +320,14 @@ class BaseRunner(metaclass=ABCMeta):
         # load_state_dict(model, state_dict, strict, logger)
         # return checkpoint
         
-    def log_info(self, message):
+    def log_info_and_print(self, message):
         if not self.distributed or (self.distributed and self._rank == 0):
-            self.logger.log(message)
+            self.logger.info_and_print(message)
     def log_train(self, message):
-        if self._rank == 0:
-            self.logger.info(message)
+        if not self.distributed or (self.distributed and self._rank == 0):
+            self.logger.info_and_print(message)
         else:
-            self.logger.print_screen(message)
+            self.logger.info(message)
             
     @no_type_check
     def resume(self,
@@ -316,7 +370,7 @@ class BaseRunner(metaclass=ABCMeta):
         if 'lr_scheduler' in checkpoint and resume_lr_scheduler:
             self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             
-        self.log_info('resumed epoch {}, iter {}'.format(self._epoch, self._iter))
+        self.log_info_and_print('resumed epoch {}, iter {}'.format(self._epoch, self._iter))
         
     def get_hook_info(self) -> str:
         # Get hooks info in each stage
@@ -341,5 +395,66 @@ class BaseRunner(metaclass=ABCMeta):
                 stage_hook_infos.append(info)
         return '\n'.join(stage_hook_infos)
     
+    def get_results(self, data_loader: DataLoader, gpu_collect = False):
+        model = self.model
 
-    
+        # Synchronization of BatchNorm's buffer (running_mean and running_var) is not supported in the DDP of pytorch, which may cause the inconsistent performance of models in different ranks, so we broadcast BatchNorm's buffers of rank 0 to other ranks to avoid this.
+        if self.distributed and self.broadcast_bn_buffer:
+            for name, module in model.named_modules():
+                if isinstance(module,
+                              nn.modules.batchnorm._BatchNorm) and module.track_running_stats:
+                    dist.broadcast(module.running_var, 0)
+                    dist.broadcast(module.running_mean, 0)
+
+        model.eval()
+        results = []
+        loss_dicts = []
+        metrics_dicts = []
+        time.sleep(2)  # This line can prevent deadlock problem in some multi-gpu cases
+        for data in tqdm(data_loader, position=self._rank, total=len(data_loader)):
+            with torch.no_grad():
+                inputs, targets = data[0], data[1]
+                targets = dict_to_device(targets, self.device)
+                inputs = dict_to_device(inputs, self.device)
+                preds = model(inputs)
+                batch_loss_dict = self.loss.forward_loss(preds, targets)
+                batch_metrics_dict = self.metrics.get_metrics(preds, targets, self.device)
+
+            loss_dicts.append(batch_loss_dict)
+            metrics_dicts.append(batch_metrics_dict)
+            del batch_loss_dict, batch_metrics_dict
+        
+        avg_loss_dict = self.loss.average_loss(loss_dicts, self.device)
+        avg_metrics_dict = self.metrics.average_metrics(metrics_dicts, self.device)  
+        
+        if self.distributed:
+            # collect results from all ranks
+            if gpu_collect:
+                losses_from_ranks = collect_results_gpu(avg_loss_dict, self._world_size)
+                metrics_from_ranks = collect_results_gpu(avg_metrics_dict, self._world_size)
+            else:
+                tmpdir = tempfile.TemporaryDirectory()
+                if tmpdir is None:
+                    tmpdir = os.path.join(self.work_dir, '.eval_hook')
+                losses_from_ranks = collect_results_cpu(avg_loss_dict, self._world_size, tmpdir)
+                metrics_from_ranks = collect_results_cpu(avg_metrics_dict, self._world_size, tmpdir)
+            if self._rank == 0:
+                return self.loss.average_loss(losses_from_ranks, self.device), self.metrics.average_metrics(metrics_from_ranks, self.device)  
+            else:
+                return None, None
+        else:
+            return avg_loss_dict, avg_metrics_dict
+
+    def var_collect(self, variable, tmpdir_path_str, size: int, gpu_collect: bool = True): 
+        tmpdir = tempfile.TemporaryDirectory()
+        if tmpdir is None:
+            tmpdir = tmpdir_path_str
+
+        # collect results from all ranks
+        if gpu_collect:
+            result_from_ranks = collect_results_gpu(variable, size)
+        else:
+            result_from_ranks = collect_results_cpu(variable, size, tmpdir)
+        
+        tmpdir.cleanup()
+        return result_from_ranks

@@ -93,7 +93,6 @@ class ClassBalancedSampler(sampler.Sampler):
         self.num_sample_class = num_sample_class
         self.shuffle = shuffle
         self.seed = seed
-        self.num_samples = len(self.dataset)
 
         self.n_samples_per_process = int(
             math.ceil(
@@ -184,7 +183,7 @@ class ClassBalancedSampler(sampler.Sampler):
     
     
     def __len__(self) -> int:
-        return self.num_samples
+        return self.n_samples_per_process
 
     def set_epoch(self, epoch: int) -> None:
         r"""

@@ -1,0 +1,412 @@
+Path ./Endoscopy-007/Endoscopy/CholecSeg8k
+	key: imgs
+	shape: (480, 854, 3)
+	range: [ 0 255 ]
+	key: gts
+	shape: (480, 854)
+	range: [ 0 4 ]
+Path ./Endoscopy-007/Endoscopy/Kvasir-SEG
+	key: imgs
+	shape: (529, 621, 3)
+	range: [ 0 255 ]
+	key: gts
+	shape: (529, 621)
+	range: [ 0 2 ]
+Path ./Endoscopy-007/Endoscopy/m2caiSeg
+	key: imgs
+	shape: (434, 774, 3)
+	range: [ 0 255 ]
+	key: gts
+	shape: (434, 774)
+	range: [ 0 4 ]
+Path ./Dermoscopy-006/Dermoscopy/ISIC2018
+	key: imgs
+	shape: (2000, 3008, 3)
+	range: [ 5 255 ]
+	key: gts
+	shape: (2000, 3008)
+	range: [ 0 2 ]
+Path ./CT-005/CT/LIDC-IDRI
+	key: imgs
+	shape: (1, 512, 512)
+	range: [ 0 255 ]
+	key: gts
+	shape: (1, 512, 512)
+	range: [ 0 2 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.6640620231628418 2.5 ]
+Path ./CT-005/CT/TotalSeg_muscles
+	key: imgs
+	shape: (185, 207, 207)
+	range: [ 0 255 ]
+	key: gts
+	shape: (185, 207, 207)
+	range: [ 0 19 ]
+	key: spacing
+	shape: (3,)
+	range: [ 1.5 1.5 ]
+Path ./CT-005/CT/AMOS
+	key: imgs
+	shape: (91, 512, 512)
+	range: [ 0 255 ]
+	key: gts
+	shape: (91, 512, 512)
+	range: [ 0 15 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.7820000052452087 5.0 ]
+Path ./CT-005/CT/CT_AbdTumor
+	key: imgs
+	shape: (62, 512, 512)
+	range: [ 0 255 ]
+	key: gts
+	shape: (62, 512, 512)
+	range: [ 0 14 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.90234375 2.5 ]
+Path ./CT-005/CT/COVID19-CT-Seg-Bench
+	key: imgs
+	shape: (143, 512, 512)
+	range: [ 0 255 ]
+	key: gts
+	shape: (143, 512, 512)
+	range: [ 0 13 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.68359375 1.5 ]
+Path ./CT-005/CT/COVID-19-20-CT-SegChallenge
+	key: imgs
+	shape: (4, 512, 512)
+	range: [ 0 255 ]
+	key: gts
+	shape: (4, 512, 512)
+	range: [ 0 3 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.7400000095367432 5.0 ]
+Path ./CT-005/CT/CT-ORG
+	key: imgs
+	shape: (410, 512, 512)
+	range: [ 0 255 ]
+	key: gts
+	shape: (410, 512, 512)
+	range: [ 0 11 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.712890625 1.5 ]
+Path ./CT-005/CT/LungLesions
+	key: imgs
+	shape: (38, 512, 512)
+	range: [ 0 255 ]
+	key: gts
+	shape: (38, 512, 512)
+	range: [ 0 7 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.9769999980926514 3.0 ]
+Path ./CT-005/CT/AbdomenCT1K
+	key: imgs
+	shape: (74, 512, 512)
+	range: [ 0 255 ]
+	key: gts
+	shape: (74, 512, 512)
+	range: [ 0 7 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.7949219942092896 2.5 ]
+Path ./CT-005/CT/LungMasks
+	key: imgs
+	shape: (201, 512, 512)
+	range: [ 0 255 ]
+	key: gts
+	shape: (201, 512, 512)
+	range: [ 0 2 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.8808590173721313 1.244979977607727 ]
+Path ./CT-005/CT/TCIA-LCTSC
+	key: imgs
+	shape: (133, 512, 512)
+	range: [ 0 255 ]
+	key: gts
+	shape: (133, 512, 512)
+	range: [ 0 5 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.9765620231628418 2.5 ]
+Path ./CT-005/CT/TotalSeg_organs
+	key: imgs
+	shape: (39, 249, 249)
+	range: [ 0 255 ]
+	key: gts
+	shape: (39, 249, 249)
+	range: [ 0 20 ]
+	key: spacing
+	shape: (3,)
+	range: [ 1.5 1.5 ]
+Path ./CT-005/CT/TotalSeg_cardiac
+	key: imgs
+	shape: (92, 95, 95)
+	range: [ 0 255 ]
+	key: gts
+	shape: (92, 95, 95)
+	range: [ 0 13 ]
+	key: spacing
+	shape: (3,)
+	range: [ 1.5 1.5 ]
+Path ./OCT/Intraretinal-Cystoid-Fluid
+	key: imgs
+	shape: (512, 512, 3)
+	range: [ 0 255 ]
+	key: gts
+	shape: (512, 512)
+	range: [ 0 8 ]
+Path ./PET/autoPET
+	key: imgs
+	shape: (55, 400, 400)
+	range: [ 0 255 ]
+	key: gts
+	shape: (55, 400, 400)
+	range: [ 0 6 ]
+	key: spacing
+	shape: (3,)
+	range: [ 2.0364201068878174 3.0 ]
+Path ./Mammography-003/Mammography/CDD-CESM
+	key: imgs
+	shape: (2189, 1212, 3)
+	range: [ 0 255 ]
+	key: gts
+	shape: (2189, 1212)
+	range: [ 0 2 ]
+Path ./MR-009/MR/QIN-PROSTATE-Lesion
+	key: imgs
+	shape: (3, 512, 512)
+	range: [ 0 255 ]
+	key: gts
+	shape: (3, 512, 512)
+	range: [ 0 2 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.3125 3.000002384185791 ]
+Path ./MR-009/MR/ISLES2022_DWI
+	key: imgs
+	shape: (28, 112, 112)
+	range: [ 0 255 ]
+	key: gts
+	shape: (28, 112, 112)
+	range: [ 0 2 ]
+	key: spacing
+	shape: (3,)
+	range: [ 2.0 2.0 ]
+Path ./MR-009/MR/Heart
+	key: imgs
+	shape: (70, 320, 320)
+	range: [ 0 255 ]
+	key: gts
+	shape: (70, 320, 320)
+	range: [ 0 1 ]
+	key: spacing
+	shape: (3,)
+	range: [ 1.25 1.3700000047683716 ]
+Path ./MR-009/MR/AMOSMR
+	key: imgs
+	shape: (72, 260, 320)
+	range: [ 0 255 ]
+	key: gts
+	shape: (72, 260, 320)
+	range: [ 0 13 ]
+	key: spacing
+	shape: (3,)
+	range: [ 1.1875 3.0 ]
+Path ./MR-009/MR/CervicalCancer
+	key: imgs
+	shape: (8, 256, 256)
+	range: [ 0 255 ]
+	key: gts
+	shape: (8, 256, 256)
+	range: [ 0 2 ]
+	key: spacing
+	shape: (3,)
+	range: [ 1.1719000339508057 3.999998092651367 ]
+Path ./MR-009/MR/QIN-PROSTATE-Prostate
+	key: imgs
+	shape: (15, 512, 512)
+	range: [ 0 255 ]
+	key: gts
+	shape: (15, 512, 512)
+	range: [ 0 1 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.2734000086784363 3.4999990463256836 ]
+Path ./MR-009/MR/WMH_T1
+	key: imgs
+	shape: (16, 240, 240)
+	range: [ 0 255 ]
+	key: gts
+	shape: (16, 240, 240)
+	range: [ 0 43 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.9583333134651184 2.9999988079071045 ]
+Path ./MR-009/MR/SpineMR
+	key: imgs
+	shape: (12, 880, 880)
+	range: [ 0 255 ]
+	key: gts
+	shape: (12, 880, 880)
+	range: [ 0 17 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.3448275923728943 4.399998664855957 ]
+Path ./MR-009/MR/WMH_FLAIR
+	key: imgs
+	shape: (18, 256, 232)
+	range: [ 0 255 ]
+	key: gts
+	shape: (18, 256, 232)
+	range: [ 0 37 ]
+	key: spacing
+	shape: (3,)
+	range: [ 1.0 3.0000014305114746 ]
+Path ./MR-009/MR/BraTS_T1CE
+	key: imgs
+	shape: (30, 240, 240)
+	range: [ 0 255 ]
+	key: gts
+	shape: (30, 240, 240)
+	range: [ 0 1 ]
+	key: spacing
+	shape: (3,)
+	range: [ 1.0 1.0 ]
+Path ./MR-009/MR/crossmoda
+	key: imgs
+	shape: (12, 512, 512)
+	range: [ 0 255 ]
+	key: gts
+	shape: (12, 512, 512)
+	range: [ 0 5 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.41015625 1.5 ]
+Path ./MR-009/MR/ISLES2022_ADC
+	key: imgs
+	shape: (1, 112, 112)
+	range: [ 0 255 ]
+	key: gts
+	shape: (1, 112, 112)
+	range: [ 0 4 ]
+	key: spacing
+	shape: (3,)
+	range: [ 2.0 2.0 ]
+Path ./MR-009/MR/BraTS_FLAIR
+	key: imgs
+	shape: (45, 240, 240)
+	range: [ 0 255 ]
+	key: gts
+	shape: (45, 240, 240)
+	range: [ 0 1 ]
+	key: spacing
+	shape: (3,)
+	range: [ 1.0 1.0 ]
+Path ./MR-009/MR/ProstateADC
+	key: imgs
+	shape: (14, 128, 84)
+	range: [ 0 255 ]
+	key: gts
+	shape: (14, 128, 84)
+	range: [ 0 1 ]
+	key: spacing
+	shape: (3,)
+	range: [ 2.0 2.999999761581421 ]
+Path ./MR-009/MR/BraTS_T1
+	key: imgs
+	shape: (59, 240, 240)
+	range: [ 0 255 ]
+	key: gts
+	shape: (59, 240, 240)
+	range: [ 0 1 ]
+	key: spacing
+	shape: (3,)
+	range: [ 1.0 1.0 ]
+Path ./MR-009/MR/ProstateT2
+	key: imgs
+	shape: (15, 320, 320)
+	range: [ 0 255 ]
+	key: gts
+	shape: (15, 320, 320)
+	range: [ 0 1 ]
+	key: spacing
+	shape: (3,)
+	range: [ 0.625 3.6000001430511475 ]
+Path ./Fundus-001/Fundus/IDRiD
+	key: imgs
+	shape: (2848, 4288, 3)
+	range: [ 0 255 ]
+	key: gts
+	shape: (2848, 4288)
+	range: [ 0 255 ]
+Path ./Fundus-001/Fundus/PAPILA
+	key: imgs
+	shape: (1934, 2576, 3)
+	range: [ 0 231 ]
+	key: gts
+	shape: (1934, 2576)
+	range: [ 0 255 ]
+Path ./XRay-008/XRay/COVID-QU-Ex-lungMask_CovidInfection
+	key: imgs
+	shape: (256, 256, 3)
+	range: [ 0 250 ]
+	key: gts
+	shape: (256, 256)
+	range: [ 0 3 ]
+Path ./XRay-008/XRay/Chest-Xray-Masks-and-Labels
+	key: imgs
+	shape: (2942, 3001, 3)
+	range: [ 0 255 ]
+	key: gts
+	shape: (2942, 3001)
+	range: [ 0 6 ]
+Path ./XRay-008/XRay/Pneumothorax-Masks
+	key: imgs
+	shape: (1024, 1024, 3)
+	range: [ 0 246 ]
+	key: gts
+	shape: (1024, 1024)
+	range: [ 0 2 ]
+Path ./XRay-008/XRay/COVID-19-Radiography-Database
+	key: imgs
+	shape: (299, 299, 3)
+	range: [ 0 255 ]
+	key: gts
+	shape: (299, 299)
+	range: [ 0 3 ]
+Path ./XRay-008/XRay/COVID-QU-Ex-lungMask_Lung
+	key: imgs
+	shape: (256, 256, 3)
+	range: [ 0 245 ]
+	key: gts
+	shape: (256, 256)
+	range: [ 0 3 ]
+Path ./US/Breast-Ultrasound
+	key: imgs
+	shape: (462, 561, 3)
+	range: [ 0 255 ]
+	key: gts
+	shape: (462, 561)
+	range: [ 0 2 ]
+Path ./US/hc18
+	key: imgs
+	shape: (540, 800, 3)
+	range: [ 0 243 ]
+	key: gts
+	shape: (540, 800)
+	range: [ 0 255 ]
+Path ./Microscopy-004/Microscopy/NeurIPS22CellSeg
+	key: imgs
+	shape: (970, 970, 3)
+	range: [ 0 255 ]
+	key: gts
+	shape: (970, 970)
+	range: [ 0 39 ]

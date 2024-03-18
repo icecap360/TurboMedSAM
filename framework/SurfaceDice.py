@@ -1,23 +1,3 @@
-import torch
-import torch.nn as nn
-import os
-import numpy as np
-from abc import abstractmethod
-from framework import add_loss, convert_loss_float, BaseMetric
-import monai
-
-class MedSAMMetrics(BaseMetric):
-    def __init__(self, class_thresholds) -> None:
-        super().__init__()
-        self.dice_metric = monai.metrics.DiceMetric()
-        self.NSD_metric = monai.metrics.SurfaceDiceMetric(class_thresholds)
-    def get_metrics(self, pred, target, device) -> dict:
-        return {
-            'normalized_surface_density': torch.mean(self.NSD_metric(torch.sigmoid(pred['logits']), target['mask'])),
-            'dice': torch.mean(self.dice_metric(torch.sigmoid(pred['logits']), target['mask']).reshape(-1)),
-        }
-
-
 # -*- coding: utf-8 -*-
 """
 Created on Fri Apr 15 13:01:08 2022

@@ -26,10 +26,10 @@ def init_dist(backend, rank, world_size):
     # else:
     #     raise ValueError(f'Invalid launcher type: {launcher}')
     if os.environ.get('MASTER_ADDR') is None:
-        raise Exception('Missing MASTER_ADDR')
+        # raise Exception('Missing MASTER_ADDR')
         os.environ["MASTER_ADDR"] = "localhost"
     if os.environ.get('MASTER_PORT') is None:
-        raise Exception('Missing MASTER_PORT')
+        # raise Exception('Missing MASTER_PORT')
         os.environ["MASTER_PORT"] = "29501"
     if not os.environ.get('RANK') is None:
         rank = int(os.environ.get('RANK'))
