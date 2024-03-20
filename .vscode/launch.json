@@ -12,7 +12,7 @@
             "module":"torch.distributed.launch",
             // with args...
             "args":["--use_env","--nproc_per_node=3","--master_addr=127.0.0.1",
-            "--master_port=29500","train.py", "CVPRMedSAM.py"],
+            "--master_port=29502", "train.py", "DistillRepVit.py"],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -25,7 +25,7 @@
             "module":"torch.distributed.launch",
             // with args...
             "args":["--use_env","--nproc_per_node=3","--master_addr=127.0.0.1",
-            "--master_port=29500","inference.py", "MedSAMEncoder.py", "--save_result=True"],
+            "--master_port=29502","inference.py", "MedSAMEncoder1024.py", "--save_result=True"],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -38,8 +38,7 @@
             "cwd": "${workspaceFolder}",
             "justMyCode": false,
             "console": "integratedTerminal",
-            "args": ["CVPRMedSAM.py"]
-
+            "args": ["DistillRepVit_PreComputedEncoder.py"]
         }
     ]
 }

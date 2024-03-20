@@ -14,7 +14,7 @@ import random
 from getpass import getuser
 from socket import gethostname
 
-def init_dist(backend, rank, world_size):
+def init_dist_custom(backend, rank, world_size):
     if mp.get_start_method(allow_none=True) is None:
         mp.set_start_method('spawn')
     # if launcher == 'pytorch':
@@ -30,7 +30,7 @@ def init_dist(backend, rank, world_size):
         os.environ["MASTER_ADDR"] = "localhost"
     if os.environ.get('MASTER_PORT') is None:
         # raise Exception('Missing MASTER_PORT')
-        os.environ["MASTER_PORT"] = "29501"
+        os.environ["MASTER_PORT"] = "29500"
     if not os.environ.get('RANK') is None:
         rank = int(os.environ.get('RANK'))
     if not os.environ.get('WORLD_SIZE') is None:

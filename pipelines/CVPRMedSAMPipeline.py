@@ -51,12 +51,12 @@ class CVPRMedSAMPipeline:
                 'bbox' : np.float32(inputs["bbox"][None, None, ...]),
                 "meta"  : meta}
     
-    def pipeline_encoder_inference(self, inputs, outputs, meta):
+    def pipeline_encoder(self, inputs, outputs, meta):
         img_padded, _ = self.img_transform(
             inputs['image'],
             self.target_length)
         return  {"image" : np.float32(img_padded),
-                "meta"  : meta}
+                "meta"  : meta}, outputs
         
     def preprocess_3D(self, voxels, gt, meta, target_length, bbox_shift):
         inputs = dict(

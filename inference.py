@@ -7,7 +7,7 @@ from torch import distributed as dist
 import torch.nn as nn
 from tqdm import tqdm
 from progress.bar import Bar
-from framework import import_module, setup_multi_processes, init_dist, get_dist_info, logger, read_cfg_str, get_device, init_random_seed, set_random_seed, create_dataloader, set_visible_devices, dict_to_device
+from framework import import_module, setup_multi_processes, init_dist_custom, get_dist_info, logger, read_cfg_str, get_device, init_random_seed, set_random_seed, create_dataloader, set_visible_devices, dict_to_device
 from copy import deepcopy
 
 # from framework import 
@@ -16,7 +16,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Inference on a detector')
     parser.add_argument('config', help='train config file path')
     parser.add_argument('--local_rank', type=int, default=0)
-    parser.add_argument('--save_results', type=bool, default=False)
+    parser.add_argument('--save_results', type=bool, default=True)
+    parser.add_argument('--benchmark', type=bool, default=True)
     parser.add_argument('--local_world_size', type=int, default = 1)
     parser.add_argument(
         '--resume-from', help='the checkpoint file to resume from')
@@ -48,7 +49,7 @@ def main(args):
 
     # init distributed env first, since logger depends on the dist info.
     if not (cfg.compute['job_launcher']['type'] == 'none' and not torch.distributed.is_available()):
-        init_dist(cfg.compute['job_launcher']['dist_params']['backend'], args.local_rank, args.local_world_size )
+        init_dist_custom(cfg.compute['job_launcher']['dist_params']['backend'], args.local_rank, args.local_world_size )
     rank, world_size = get_dist_info()
     distributed = (world_size != 1)
 
@@ -113,8 +114,8 @@ def main(args):
     time.sleep(2)  # This line can prevent deadlock problem in some multi-gpu cases
     for data in tqdm(inference_loader, position=rank, total=len(inference_loader)):
         with torch.no_grad():
-            meta = data['meta']
-            inputs = dict_to_device(data, device)
+            inputs = data[0]
+            inputs = dict_to_device(inputs, device)
             preds = model(inputs)
             if args.save_results:
                 saver.save(inputs, preds)

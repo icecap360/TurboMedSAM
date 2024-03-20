@@ -1,5 +1,11 @@
 import torch.nn as nn
+from timm.models.vision_transformer import trunc_normal_
+from timm.models.layers import SqueezeExcite
+import torch
 from framework import BaseModule
+
+__all__ = ['repvit_model']
+
 def _make_divisible(v, divisor, min_value=None):
     """
     This function is taken from the original tf repo.
@@ -19,10 +25,23 @@ def _make_divisible(v, divisor, min_value=None):
         new_v += divisor
     return new_v
 
-from timm.models.layers import SqueezeExcite
 
-import torch
+# From https://github.com/facebookresearch/detectron2/blob/main/detectron2/layers/batch_norm.py # noqa
+# Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa
+class LayerNorm2d(nn.Module):
+    def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(num_channels))
+        self.bias = nn.Parameter(torch.zeros(num_channels))
+        self.eps = eps
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        u = x.mean(1, keepdim=True)
+        s = (x - u).pow(2).mean(1, keepdim=True)
+        x = (x - u) / torch.sqrt(s + self.eps)
+        x = self.weight[:, None, None] * x + self.bias[:, None, None]
+        return x
+    
 class Conv2d_BN(torch.nn.Sequential):
     def __init__(self, a, b, ks=1, stride=1, pad=0, dilation=1,
                  groups=1, bn_weight_init=1, resolution=-10000):
@@ -131,7 +150,7 @@ class RepViTBlock(nn.Module):
 
         if stride == 2:
             self.token_mixer = nn.Sequential(
-                Conv2d_BN(inp, inp, kernel_size, stride, (kernel_size - 1) // 2, groups=inp),
+                Conv2d_BN(inp, inp, kernel_size, stride if inp != 320 else 1, (kernel_size - 1) // 2, groups=inp),
                 SqueezeExcite(inp, 0.25) if use_se else nn.Identity(),
                 Conv2d_BN(inp, oup, ks=1, stride=1, pad=0)
             )
@@ -143,23 +162,31 @@ class RepViTBlock(nn.Module):
                     Conv2d_BN(2 * oup, oup, 1, 1, 0, bn_weight_init=0),
                 ))
         else:
-            assert(self.identity)
+            # assert(self.identity)
             self.token_mixer = nn.Sequential(
                 RepVGGDW(inp),
                 SqueezeExcite(inp, 0.25) if use_se else nn.Identity(),
             )
-            self.channel_mixer = Residual(nn.Sequential(
-                    # pw
-                    Conv2d_BN(inp, hidden_dim, 1, 1, 0),
-                    nn.GELU() if use_hs else nn.GELU(),
-                    # pw-linear
-                    Conv2d_BN(hidden_dim, oup, 1, 1, 0, bn_weight_init=0),
-                ))
+            if self.identity:
+                self.channel_mixer = Residual(nn.Sequential(
+                        # pw
+                        Conv2d_BN(inp, hidden_dim, 1, 1, 0),
+                        nn.GELU() if use_hs else nn.GELU(),
+                        # pw-linear
+                        Conv2d_BN(hidden_dim, oup, 1, 1, 0, bn_weight_init=0),
+                    ))
+            else:
+                self.channel_mixer = nn.Sequential(
+                        # pw
+                        Conv2d_BN(inp, hidden_dim, 1, 1, 0),
+                        nn.GELU() if use_hs else nn.GELU(),
+                        # pw-linear
+                        Conv2d_BN(hidden_dim, oup, 1, 1, 0, bn_weight_init=0),
+                    )
 
     def forward(self, x):
         return self.channel_mixer(self.token_mixer(x))
 
-from timm.models.vision_transformer import trunc_normal_
 class BN_Linear(torch.nn.Sequential):
     def __init__(self, a, b, bias=True, std=0.02):
         super().__init__()
@@ -215,11 +242,13 @@ class Classfier(nn.Module):
         else:
             return classifier
 
-class RepViTEncoder(nn.Module):
-    def __init__(self, cfgs, num_classes=1000, distillation=False):
-        super(RepViTEncoder, self).__init__()
+class RepViT(nn.Module):
+    def __init__(self, cfgs, num_classes=1000, distillation=False, img_size=1024):
+        super(RepViT, self).__init__()
         # setting of inverted residual blocks
         self.cfgs = cfgs
+
+        self.img_size = img_size
 
         # building first layer
         input_channel = self.cfgs[0][2]
@@ -234,18 +263,36 @@ class RepViTEncoder(nn.Module):
             layers.append(block(input_channel, exp_size, output_channel, k, s, use_se, use_hs))
             input_channel = output_channel
         self.features = nn.ModuleList(layers)
-        self.classifier = Classfier(output_channel, num_classes, distillation)
+        # self.classifier = Classfier(output_channel, num_classes, distillation)
         
+        self.neck = nn.Sequential(
+            nn.Conv2d(
+                output_channel,
+                256,
+                kernel_size=1,
+                bias=False,
+            ),
+            LayerNorm2d(256),
+            nn.Conv2d(
+                256,
+                256,
+                kernel_size=3,
+                padding=1,
+                bias=False,
+            ),
+            LayerNorm2d(256),
+        )
+
     def forward(self, x):
         # x = self.features(x)
         for f in self.features:
             x = f(x)
-        x = torch.nn.functional.adaptive_avg_pool2d(x, 1).flatten(1)
-        x = self.classifier(x)
+        # x = torch.nn.functional.adaptive_avg_pool2d(x, 1).flatten(1)
+        x = self.neck(x)
         return x
 
 class RepViTModel(BaseModule):
-    def __init__(self, cfgs, num_classes=1000, distillation=False, init_cfg= None):
+    def __init__(self, cfgs, num_classes=1000, distillation=False, init_cfg=None):
         super(RepViTModel, self).__init__(init_cfg)
         # setting of inverted residual blocks
         self.cfgs = cfgs
@@ -262,198 +309,53 @@ class RepViTModel(BaseModule):
             layers.append(block(input_channel, exp_size, output_channel, k, s, use_se, use_hs))
             input_channel = output_channel
         self.features = nn.ModuleList(layers)
-        self.classifier = Classfier(output_channel, num_classes, distillation)
+        # self.classifier = Classfier(output_channel, num_classes, distillation)
         
+        self.neck = nn.Sequential(
+            nn.Conv2d(
+                output_channel,
+                256,
+                kernel_size=1,
+                bias=False,
+            ),
+            LayerNorm2d(256),
+            nn.Conv2d(
+                256,
+                256,
+                kernel_size=3,
+                padding=1,
+                bias=False,
+            ),
+            LayerNorm2d(256),
+        )
+
     def forward(self, data_batch):
         x = data_batch['image']
+        # x = self.features(x)
         for f in self.features:
             x = f(x)
-        x = torch.nn.functional.adaptive_avg_pool2d(x, 1).flatten(1)
-        x = self.classifier(x)
-        return {'embedding':x}
+        # x = torch.nn.functional.adaptive_avg_pool2d(x, 1).flatten(1)
+        x = self.neck(x)
+        return {'embeddings': x}
+    def init_weights(self):
+        if self.init_cfg is None:
+            return
+        elif 'pretrained' in self.init_cfg['type'].lower():
+            if not 'checkpoint' in self.init_cfg.keys():
+                raise Exception('Missing checkpoint')   
+            if 'sam' in self.init_cfg['checkpoint'].lower():
+                sam_state_dict = torch.load(self.init_cfg['checkpoint'])
+                image_encoder_params = [k for k in sam_state_dict.keys() if k.startswith('image_encoder')]
+                img_encoder_dict = {k.replace('image_encoder.', ''):sam_state_dict[k] for k in image_encoder_params}
+                self.load_state_dict(img_encoder_dict, 
+                                 strict=self.init_cfg.get('strict') or True)
+            else:
+                self.load_state_dict(torch.load(self.init_cfg['checkpoint']), 
+                                 strict=self.init_cfg.get('strict') or True)
+        else:
+            raise Exception('init_cfg is formatted incorrectly')
 
-
-
-def repvit_m0_6(pretrained=False, num_classes = 1000, distillation=False):
-    """
-    Constructs a MobileNetV3-Large model
-    """
-    cfgs = [
-        [3,   2,  40, 1, 0, 1],
-        [3,   2,  40, 0, 0, 1],
-        [3,   2,  80, 0, 0, 2],
-        [3,   2,  80, 1, 0, 1],
-        [3,   2,  80, 0, 0, 1],
-        [3,   2,  160, 0, 1, 2],
-        [3,   2, 160, 1, 1, 1],
-        [3,   2, 160, 0, 1, 1],
-        [3,   2, 160, 1, 1, 1],
-        [3,   2, 160, 0, 1, 1],
-        [3,   2, 160, 1, 1, 1],
-        [3,   2, 160, 0, 1, 1],
-        [3,   2, 160, 1, 1, 1],
-        [3,   2, 160, 0, 1, 1],
-        [3,   2, 160, 0, 1, 1],
-        [3,   2, 320, 0, 1, 2],
-        [3,   2, 320, 1, 1, 1],
-    ]
-    return RepViTEncoder(cfgs, num_classes=num_classes, distillation=distillation)
-
-def repvit_m0_9(pretrained=False, num_classes = 1000, distillation=False):
-    """
-    Constructs a MobileNetV3-Large model
-    """
-    cfgs = [
-        # k, t, c, SE, HS, s 
-        [3,   2,  48, 1, 0, 1],
-        [3,   2,  48, 0, 0, 1],
-        [3,   2,  48, 0, 0, 1],
-        [3,   2,  96, 0, 0, 2],
-        [3,   2,  96, 1, 0, 1],
-        [3,   2,  96, 0, 0, 1],
-        [3,   2,  96, 0, 0, 1],
-        [3,   2,  192, 0, 1, 2],
-        [3,   2,  192, 1, 1, 1],
-        [3,   2,  192, 0, 1, 1],
-        [3,   2,  192, 1, 1, 1],
-        [3,   2, 192, 0, 1, 1],
-        [3,   2, 192, 1, 1, 1],
-        [3,   2, 192, 0, 1, 1],
-        [3,   2, 192, 1, 1, 1],
-        [3,   2, 192, 0, 1, 1],
-        [3,   2, 192, 1, 1, 1],
-        [3,   2, 192, 0, 1, 1],
-        [3,   2, 192, 1, 1, 1],
-        [3,   2, 192, 0, 1, 1],
-        [3,   2, 192, 1, 1, 1],
-        [3,   2, 192, 0, 1, 1],
-        [3,   2, 192, 0, 1, 1],
-        [3,   2, 384, 0, 1, 2],
-        [3,   2, 384, 1, 1, 1],
-        [3,   2, 384, 0, 1, 1]
-    ]
-    return RepViTEncoder(cfgs, num_classes=num_classes, distillation=distillation)
-
-def repvit_m1_0(pretrained=False, num_classes = 1000, distillation=False):
-    """
-    Constructs a MobileNetV3-Large model
-    """
-    cfgs = [
-        # k, t, c, SE, HS, s 
-        [3,   2,  56, 1, 0, 1],
-        [3,   2,  56, 0, 0, 1],
-        [3,   2,  56, 0, 0, 1],
-        [3,   2,  112, 0, 0, 2],
-        [3,   2,  112, 1, 0, 1],
-        [3,   2,  112, 0, 0, 1],
-        [3,   2,  112, 0, 0, 1],
-        [3,   2,  224, 0, 1, 2],
-        [3,   2,  224, 1, 1, 1],
-        [3,   2,  224, 0, 1, 1],
-        [3,   2,  224, 1, 1, 1],
-        [3,   2, 224, 0, 1, 1],
-        [3,   2, 224, 1, 1, 1],
-        [3,   2, 224, 0, 1, 1],
-        [3,   2, 224, 1, 1, 1],
-        [3,   2, 224, 0, 1, 1],
-        [3,   2, 224, 1, 1, 1],
-        [3,   2, 224, 0, 1, 1],
-        [3,   2, 224, 1, 1, 1],
-        [3,   2, 224, 0, 1, 1],
-        [3,   2, 224, 1, 1, 1],
-        [3,   2, 224, 0, 1, 1],
-        [3,   2, 224, 0, 1, 1],
-        [3,   2, 448, 0, 1, 2],
-        [3,   2, 448, 1, 1, 1],
-        [3,   2, 448, 0, 1, 1]
-    ]
-    return RepViTEncoder(cfgs, num_classes=num_classes, distillation=distillation)
-
-def repvit_m1_1(pretrained=False, num_classes = 1000, distillation=False):
-    """
-    Constructs a MobileNetV3-Large model
-    """
-    cfgs = [
-        # k, t, c, SE, HS, s 
-        [3,   2,  64, 1, 0, 1],
-        [3,   2,  64, 0, 0, 1],
-        [3,   2,  64, 0, 0, 1],
-        [3,   2,  128, 0, 0, 2],
-        [3,   2,  128, 1, 0, 1],
-        [3,   2,  128, 0, 0, 1],
-        [3,   2,  128, 0, 0, 1],
-        [3,   2,  256, 0, 1, 2],
-        [3,   2,  256, 1, 1, 1],
-        [3,   2,  256, 0, 1, 1],
-        [3,   2,  256, 1, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 256, 1, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 256, 1, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 256, 1, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 256, 1, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 512, 0, 1, 2],
-        [3,   2, 512, 1, 1, 1],
-        [3,   2, 512, 0, 1, 1]
-    ]
-    return RepViTEncoder(cfgs, num_classes=num_classes, distillation=distillation)
-
-def repvit_m1_5(pretrained=False, num_classes = 1000, distillation=False):
-    """
-    Constructs a MobileNetV3-Large model
-    """
-    cfgs = [
-        # k, t, c, SE, HS, s 
-        [3,   2,  64, 1, 0, 1],
-        [3,   2,  64, 0, 0, 1],
-        [3,   2,  64, 1, 0, 1],
-        [3,   2,  64, 0, 0, 1],
-        [3,   2,  64, 0, 0, 1],
-        [3,   2,  128, 0, 0, 2],
-        [3,   2,  128, 1, 0, 1],
-        [3,   2,  128, 0, 0, 1],
-        [3,   2,  128, 1, 0, 1],
-        [3,   2,  128, 0, 0, 1],
-        [3,   2,  128, 0, 0, 1],
-        [3,   2,  256, 0, 1, 2],
-        [3,   2,  256, 1, 1, 1],
-        [3,   2,  256, 0, 1, 1],
-        [3,   2,  256, 1, 1, 1],
-        [3,   2,  256, 0, 1, 1],
-        [3,   2,  256, 1, 1, 1],
-        [3,   2,  256, 0, 1, 1],
-        [3,   2,  256, 1, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 256, 1, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 256, 1, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 256, 1, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 256, 1, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 256, 1, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 256, 1, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 256, 1, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 256, 1, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 256, 0, 1, 1],
-        [3,   2, 512, 0, 1, 2],
-        [3,   2, 512, 1, 1, 1],
-        [3,   2, 512, 0, 1, 1],
-        [3,   2, 512, 1, 1, 1],
-        [3,   2, 512, 0, 1, 1]
-    ]
-    return RepViTEncoder(cfgs, num_classes=num_classes, distillation=distillation)
-
-def repvit_m2_3(pretrained=False, num_classes = 1000, distillation=False):
+def repvit_model(pretrained=False, num_classes = 1000, distillation=False, init_cfg=None):
     """
     Constructs a MobileNetV3-Large model
     """
@@ -517,5 +419,5 @@ def repvit_m2_3(pretrained=False, num_classes = 1000, distillation=False):
         [3,   2, 640, 0, 1, 1],
         # [3,   2, 640, 1, 1, 1],
         # [3,   2, 640, 0, 1, 1]
-    ]    
-    return RepViTEncoder(cfgs, num_classes=num_classes, distillation=distillation)
+    ]
+    return RepViTModel(cfgs, num_classes=num_classes, distillation=distillation, init_cfg=init_cfg)

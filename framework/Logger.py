@@ -15,7 +15,7 @@ class Logger:
         formatted_datetime = current_datetime.strftime("%d%m%Y-%H%M")
         self.path = os.path.join(
             work_dir,
-            formatted_datetime+'.log'
+            'log_'+formatted_datetime+'_' + exp_name + '.log'
         )
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
         self.exp_name = exp_name
@@ -100,7 +100,7 @@ class Logger:
         return message
     
     def train_iter_message(self, rank, iters, max_iters, lr, loss_dict, total_loss):
-        message = 'Epoch rank-{rank} [{iters}/{max_iters}][{percent:02f}] '.format(
+        message = 'Iter rank-{rank} [{iters}/{max_iters}][{percent:02f}] '.format(
             iters=iters,
             max_iters=max_iters,
             percent=iters/max_iters,

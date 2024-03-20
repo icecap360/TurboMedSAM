@@ -13,6 +13,9 @@ from framework import BaseModule
 from typing import Optional, Tuple, Type
 
 # This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa
+
+__all__ = ['ViTMedSAM']
+
 class ViTMedSAM(BaseModule):
     def __init__(
         self,

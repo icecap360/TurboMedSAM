@@ -46,7 +46,8 @@ class EpochBasedRunner(BaseRunner):
                  val_freq_epoch=1,
                  save_freq=1,
                  save_optimizer=False,
-                 max_epochs=None):
+                 max_epochs=None,
+                 batch_size=None):
         self.val_freq_epoch = val_freq_epoch
         super().__init__(model=model,
                  optimizer=optimizer,
@@ -63,7 +64,8 @@ class EpochBasedRunner(BaseRunner):
                  save_freq=save_freq,
                  save_optimizer=save_optimizer,
                  max_iters=None,
-                 max_epochs=max_epochs)
+                 max_epochs=max_epochs,
+                 batch_size=batch_size)
 
     def train_epoch(self, data_loader: DataLoader):
         self.call_hook('before_train_epoch')
@@ -125,13 +127,19 @@ class EpochBasedRunner(BaseRunner):
                     self.save_checkpoint(
                         out_dir = self.work_dir,
                         save_optimizer = self.save_optimizer,
-                        save_scheduler = True)
+                        save_scheduler = True,
+                        filename = 'epoch_{epoch}.pth'.format(
+                            epoch=self._epoch
+                        ))
                     dist.barrier()
             else:
                 self.save_checkpoint(
                     out_dir = self.work_dir,
                     save_optimizer = self.save_optimizer,
-                    save_scheduler = True)
+                    save_scheduler = True,
+                    filename = 'epoch_{epoch}.pth'.format(
+                            epoch=self._epoch
+                        ))
         self.call_hook('after_train_epoch')
     
     # @torch.no_grad()

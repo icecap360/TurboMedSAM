@@ -27,20 +27,19 @@ def CVPRMedSAM_val_dataloader_creator(data_settings, compute_settings, seed, is_
         seed=seed) if seed is not None else None
     
     dataset_settings = data_settings[split_type]['dataset']
+    dataset_type = dataset_settings.pop("type")
+    sampler_settings = data_settings[split_type]["sampler"]
+    sampler_type = sampler_settings.pop('type')
+        
     classes = get_MedSAM_classes(dataset_settings['root_dir'],
                                         split_type)
     loaders = []
     for cat in classes:
-        dataset_cat = CVPRMedSAMDataset(
-            root_dir=dataset_settings['root_dir'],
+        dataset_cat = dataset_type(
             split_type=split_type,
             subset_classes=[cat],
-            pipeline=dataset_settings.get('pipeline'),
-            input_transform=dataset_settings.get('input_transform'),
-            target_transform=dataset_settings.get('target_transform'),
+            **dataset_settings
         )
-        sampler_settings = deepcopy(data_settings[split_type]["sampler"])
-        sampler_type = sampler_settings.pop('type')
         sampler = sampler_type(dataset_cat, 
                             num_replicas=world_size, 
                             rank=rank,

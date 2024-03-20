@@ -12,12 +12,13 @@ import dataloaders
 from functools import partial
 import savers
 
+batch_size = 1
+image_size = 1024
 encoder_embed_dim=768
 encoder_depth=12
 encoder_num_heads=12
 encoder_global_attn_indexes=[2, 5, 8, 11]
 prompt_embed_dim = 256
-image_size = 256
 vit_patch_size = 16
 model = models.ViTMedSAM(
         depth=encoder_depth,
@@ -60,7 +61,7 @@ compute = dict(
     opencv_num_threads=0,
     cudnn_benchmark=False,
     workers_per_gpu=4,
-    samples_per_gpu=4,
+    samples_per_gpu=batch_size,
     pin_memory=False,
     prefetch_factor=2,
     broadcast_bn_buffer=True,
@@ -134,7 +135,7 @@ data = dict(
             type = datasets.CVPRMedSAMEncoderDataset,
             # classes=classes,
             root_dir='/pub4/qasim/MedSAM/split_npzs_3chnl/',
-            pipeline=pipeline_type.pipeline_encoder_inference),
+            pipeline=pipeline_type.pipeline_encoder),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type = basic_dataloader_creator)
     ),
@@ -142,6 +143,6 @@ data = dict(
 
 saver = dict(
     type = savers.CVPRMedSAMSaver,
-    subdirectory = 'results',
+    directory = '/pub2/data/qasim/MedSAM1024/results',
     keys = ['embeddings']
 )

@@ -48,6 +48,7 @@ class IterBasedRunner(BaseRunner):
                  val_freq_iter=1,
                  save_freq=1,
                  save_optimizer=False,
+                 batch_size=None,
                  ):
         self.val_freq_iter = val_freq_iter
         self.sentinal = 'END'
@@ -67,7 +68,8 @@ class IterBasedRunner(BaseRunner):
                  save_freq=save_freq,
                  save_optimizer=save_optimizer,
                  max_iters=max_iters,
-                 max_epochs=None)
+                 max_epochs=None,
+                 batch_size=batch_size)
     
     def train_iter(self, inputs, targets):
         self.model.train()
@@ -78,8 +80,6 @@ class IterBasedRunner(BaseRunner):
         self.call_hook('before_train_iter')
             
         self.optimizer.zero_grad()
-        if self._rank == 0:
-            GPUtil.showUtilization()
         preds = self.model(inputs)
             
         loss_dict = self.loss.forward_loss(preds, targets)
@@ -121,13 +121,23 @@ class IterBasedRunner(BaseRunner):
                     self.save_checkpoint(
                         out_dir = self.work_dir,
                         save_optimizer = self.save_optimizer,
-                        save_scheduler = True)
+                        save_scheduler = True,
+                        filename= 'iter_{iter}-bz{batch_sz}-wz{world_size}.pth'.format(
+                            iter=self._iter,
+                            batch_sz = self.compute['samples_per_gpu'],
+                            world_size=self._world_size
+                        ))
                     dist.barrier()
             else:
                 self.save_checkpoint(
                     out_dir = self.work_dir,
                     save_optimizer = self.save_optimizer,
-                    save_scheduler = True)
+                    save_scheduler = True,
+                    filename= 'iter_{iter}-bz{batch_sz}-wz{world_size}.pth'.format(
+                            iter=self._iter,
+                            batch_sz = self.batch_size,
+                            world_size=self._world_size
+                        ))
         self.call_hook('after_train_epoch')
     
     # @torch.no_grad()

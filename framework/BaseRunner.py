@@ -69,6 +69,7 @@ class BaseRunner(metaclass=ABCMeta):
                  broadcast_bn_buffer = True,
                  save_freq=1,
                  save_optimizer=False,
+                 batch_size=None,
                  max_iters=None,
                  max_epochs=None):
         
@@ -85,7 +86,7 @@ class BaseRunner(metaclass=ABCMeta):
         self.use_cpu = use_cpu
         self.device = device
         self.broadcast_bn_buffer = broadcast_bn_buffer
-        
+        self.batch_size = batch_size
         # create work_dir
         if isinstance(work_dir, str):
             self.work_dir = os.path.abspath(work_dir)
@@ -168,7 +169,7 @@ class BaseRunner(metaclass=ABCMeta):
 
     def save_checkpoint(self,
                         out_dir: str,
-                        filename_tmpl: str = 'epoch_{}.pth',
+                        filename: str,
                         save_optimizer: bool = True,
                         save_scheduler: bool = True,
                         meta: Optional[Dict] = None,
@@ -202,7 +203,6 @@ class BaseRunner(metaclass=ABCMeta):
             # More details in https://github.com/open-mmlab/mmcv/pull/1108
         meta.update(epoch=self._epoch + 1, iter=self._iter)
 
-        filename = filename_tmpl.format(self._epoch + 1)
         filepath = os.path.join(out_dir, filename)
         optimizer = self.optimizer if save_optimizer else None
         

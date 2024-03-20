@@ -44,7 +44,7 @@ compute = dict(
 
 work_dir = 'work_dir'
 exp_name = os.path.basename(__file__)[:-3]
-runner_type= 'epoch'
+runner_type= 'iter'
 max_epochs = 48
 max_iters = 10000
 val_freq_epoch = 1
@@ -91,3 +91,8 @@ data = dict(
         dataloader_creator = dict( type= basic_val_dataloader_creator)
         )
     )
+# saver = dict(
+#     type = savers.CVPRMedSAMSaver,
+#     subdirectory = 'results',
+#     keys = ['embeddings']
+# )

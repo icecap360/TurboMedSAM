@@ -15,38 +15,40 @@ class BaseScheduler(_LRScheduler):
                  last_epoch=-1, 
                  verbose=False, 
                  warmup=None,
+                 warmup_by_epoch=False,
                  warmup_iters=0,
+                 warmup_epochs=0,
                  warmup_ratio=0.1,
-                 warmup_by_epoch=False):
+                 warmup_value = None):
         
         assert optimizer == regular_scheduler.optimizer
         
         # validate the "warmup" argument
         if warmup is not None:
-            if warmup not in ['constant', 'linear', 'exp']:
+            if warmup not in ['constant_ratio', 'linear', 'exp', 'constant_value']:
                 raise ValueError(
                     f'"{warmup}" is not a supported type for warming up, valid'
-                    ' types are "constant" and "linear"')
-        if warmup is not None:
-            assert warmup_iters > 0, \
-                '"warmup_iters" must be a positive integer'
+                    ' types are "constant_ratio" and "linear"')
+            assert (warmup_by_epoch and warmup_epochs>0) or (not warmup_by_epoch and warmup_iters>0), 'warmup epochs or warmup iters must be specified'
             assert 0 < warmup_ratio <= 1.0, \
                 '"warmup_ratio" must be in range (0,1]'
+        if warmup == 'constant_value':
+            assert not (warmup_value == None)            
 
         self.regular_scheduler = regular_scheduler
         self.regular_lr = regular_scheduler.get_last_lr()
         self.warmup = warmup
         self.warmup_iters = warmup_iters
         self.warmup_ratio = warmup_ratio
-        
-        assert warmup_by_epoch is False, \
-                'warmup_by_epoch is currently not supported'
+        self.warmup_value = warmup_value
+        self.warmup_epochs = warmup_epochs
+        self.warmup_by_epoch = warmup_by_epoch
         self.iter_cnt = 0
 
         self._last_lr = self.regular_scheduler.get_last_lr()
-        self.update_lr()
         
         super(BaseScheduler, self).__init__(optimizer, last_epoch=last_epoch, verbose=verbose)
+        self.update_lr()
         # NOTE: when resuming from a checkpoint, if 'initial_lr' is not saved,
         # it will be set according to the optimizer params
         # for group in self.optimizer.param_groups:
@@ -91,25 +93,33 @@ class BaseScheduler(_LRScheduler):
         self.last_epoch += 1
 
     def update_lr(self):
-        if self.warmup is None or self.iter_cnt > self.warmup_iters:
+        if self.warmup is None or \
+                (not self.warmup_by_epoch and self.iter_cnt > self.warmup_iters) or \
+                (self.warmup_by_epoch and self.last_epoch > self.warmup_epochs):
             return
-        elif self.iter_cnt == self.warmup_iters:
+        elif (not self.warmup_by_epoch and self.iter_cnt == self.warmup_iters) or \
+            (self.warmup_by_epoch and self.last_epoch == self.warmup_epochs):
             self._last_lr = self.regular_lr
         else:
-            self._last_lr = self.get_warmup_lr(self.iter_cnt)
-        
+            if self.warmup_by_epoch:
+                self._last_lr = self.get_warmup_lr_epochs()
+            else:
+                self._last_lr = self.get_warmup_lr_iters()
 
-    def get_warmup_lr(self, cur_iters):
+    def get_warmup_lr_iters(self):        
+        return self._get_warmup_lr(self.regular_lr, self.iter_cnt, self.warmup_iters)
+    def get_warmup_lr_epochs(self):
+        return self._get_warmup_lr(self.regular_lr, self.last_epoch, self.warmup_epochs)
 
-        def _get_warmup_lr(cur_iters, regular_lr):
-            if self.warmup == 'constant':
-                warmup_lr = [_lr * self.warmup_ratio for _lr in regular_lr]
-            elif self.warmup == 'linear':
-                k = (1 - cur_iters / self.warmup_iters) * (1 - self.warmup_ratio)
-                warmup_lr = [_lr * (1 - k) for _lr in regular_lr]
-            elif self.warmup == 'exp':
-                k = self.warmup_ratio**(1 - cur_iters / self.warmup_iters)
-                warmup_lr = [_lr * k for _lr in regular_lr]
-            return warmup_lr
-
-        return _get_warmup_lr(cur_iters, self.regular_lr)
+    def _get_warmup_lr(self, regular_lr, iters, total ):
+        if self.warmup == 'constant_ratio':
+            warmup_lr = [_lr * self.warmup_ratio for _lr in regular_lr]
+        elif self.warmup == 'linear':
+            k = (1 - iters / total) * (1 - self.warmup_ratio)
+            warmup_lr = [_lr * (1 - k) for _lr in regular_lr]
+        elif self.warmup == 'exp':
+            k = self.warmup_ratio**(1 - iters / total)
+            warmup_lr = [_lr * k for _lr in regular_lr]
+        elif self.warmup == 'constant_value':
+            warmup_lr = [self.warmup_value for _ in regular_lr]
+        return warmup_lr

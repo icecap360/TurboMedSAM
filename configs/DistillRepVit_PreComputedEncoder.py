@@ -12,44 +12,18 @@ import dataloaders
 from functools import partial
 import savers
 
-batch_size = 2
+batch_size = 1
 image_size = 1024
-encoder_embed_dim=768
-encoder_depth=12
-encoder_num_heads=12
-encoder_global_attn_indexes=[2, 5, 8, 11]
-prompt_embed_dim = 256
-vit_patch_size = 16
 
-model = models.TeacherStudentModel(
-    student=models.repvit_model(
+model = models.repvit_model(
             init_cfg={
                 "type": "pretrained",
                 "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/repvit_sam.pt",
-                "strict": True
+                "strict": False
             },
             distillation=True,
             num_classes=0
-        ),
-    teacher=models.ViTMedSAM(
-        depth=encoder_depth,
-        embed_dim=encoder_embed_dim,
-        img_size=image_size,
-        mlp_ratio=4,
-        norm_layer=partial(torch.nn.LayerNorm, eps=1e-6),
-        num_heads=encoder_num_heads,
-        patch_size=vit_patch_size,
-        qkv_bias=True,
-        use_rel_pos=True,
-        global_attn_indexes=encoder_global_attn_indexes,
-        window_size=14,
-        out_chans=prompt_embed_dim,
-        init_cfg = {
-            "type": "pretrained",
-            "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/medsam_image_encoder_1024.pth"
-        }
         )
-)
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.05) # as per paper - lr=5e-4*(batch_size//512), batch_size=1024
 grad_clip = dict(max_norm=35, norm_type=2)
@@ -99,7 +73,7 @@ save_freq_iter = 100
 loss = losses.DistillationLoss(
     distillation_type = 'mse',
     tau = 1.0,
-    precomputed_teacher = False,
+    precomputed_teacher = True,
     loss_weight = {
         'loss_distillation': 1.0,
         }
@@ -111,6 +85,8 @@ custom_hooks = []
 seed = 0
 
 data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
+# teacher_root = '/pub2/data/qasim/MedSAM1024/results'
+teacher_root = '/home/qasim/Projects/TurboMedSAM/work_dir/MedSAMEncoder/results'
 pipeline_type = pipelines.CVPRMedSAMPipeline(
     target_length=image_size,
     bbox_shift=5
@@ -118,9 +94,10 @@ pipeline_type = pipelines.CVPRMedSAMPipeline(
 data = dict(
     train=dict(
         dataset = dict(       
-            type = datasets.CVPRMedSAMEncoderDataset,
+            type = datasets.CVPRMedSAMEncoderPreComputed,
             # classes=classes,
             root_dir=data_root,
+            teacher_root=teacher_root,
             pipeline=pipeline_type.pipeline_encoder),
         sampler = dict(
             type = ClassBalancedSampler,
@@ -131,25 +108,27 @@ data = dict(
         ),
     val=dict(
         dataset = dict(       
-            type = datasets.CVPRMedSAMEncoderDataset,
+            type = datasets.CVPRMedSAMEncoderPreComputed,
             # classes=classes,
             root_dir=data_root,
+            teacher_root=teacher_root,
             pipeline=pipeline_type.pipeline_encoder),
         sampler = dict( type = DistributedSampler),
         dataloader_creator = dict( type= dataloaders.CVPRMedSAM_val_dataloader_creator)
         ),
     test=dict(
         dataset = dict(       
-            type = datasets.CVPRMedSAMEncoderDataset,
+            type = datasets.CVPRMedSAMEncoderPreComputed,
             # classes=classes,
             root_dir=data_root,
+            teacher_root=teacher_root,
             pipeline=pipeline_type.pipeline_encoder),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type= dataloaders.CVPRMedSAM_val_dataloader_creator)
     ),
     inference=dict(
         dataset = dict(       
-            type = datasets.CVPRMedSAMEncoderDataset,
+            type = datasets.CVPRMedSAMEncoderPreComputed,
             # classes=classes,
             root_dir='/pub4/qasim/MedSAM/split_npzs_3chnl/',
             pipeline=pipeline_type.pipeline_encoder),

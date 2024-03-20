@@ -3,9 +3,9 @@ import argparse
 import copy
 import os
 from torch import distributed as dist
-from framework import import_module, setup_multi_processes, init_dist, get_dist_info, logger, read_cfg_str, get_device, init_random_seed, set_random_seed, create_dataloader, set_visible_devices, EpochBasedRunner, IterBasedRunner
+from framework import import_module, setup_multi_processes, get_dist_info, logger, read_cfg_str, get_device, init_random_seed, set_random_seed, create_dataloader, set_visible_devices, EpochBasedRunner, IterBasedRunner
 
-# from framework import 
+import framework
 
 
 def parse_args():
@@ -46,7 +46,7 @@ def main(args):
     
     # init distributed env first, since logger depends on the dist info.
     if not (cfg.compute['job_launcher']['type'] == 'none' and not torch.distributed.is_available()):
-        init_dist(cfg.compute['job_launcher']['dist_params']['backend'], args.local_rank, args.local_world_size )
+        framework.init_dist_custom(cfg.compute['job_launcher']['dist_params']['backend'], args.local_rank, args.local_world_size )
     rank, world_size = get_dist_info()
     distributed = (world_size != 1)
 
@@ -115,7 +115,8 @@ def main(args):
             save_freq=cfg.save_freq_epoch,
             save_optimizer=True,
             max_epochs=cfg.max_epochs,
-            broadcast_bn_buffer=cfg.compute['broadcast_bn_buffer']
+            broadcast_bn_buffer=cfg.compute['broadcast_bn_buffer'],
+            batch_size=cfg.compute['samples_per_gpu']
             )
     else:
         runner = IterBasedRunner(
@@ -134,7 +135,8 @@ def main(args):
             save_freq=cfg.save_freq_iter,
             save_optimizer=True,
             max_iters=cfg.max_iters,
-            broadcast_bn_buffer=cfg.compute['broadcast_bn_buffer']
+            broadcast_bn_buffer=cfg.compute['broadcast_bn_buffer'],
+            batch_size=cfg.compute['samples_per_gpu']
             )
     
     runner.run(train_loader, 

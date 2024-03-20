@@ -51,7 +51,7 @@ class CVPRMedSAMSaver(BaseSaver):
                     new_pred[key] = np.array(pred)
             new_path = os.path.join(self.result_dir, 
                                     path.replace(self.root_data_dir, ''))
-            np.savez_compressed(new_path, *new_pred)
+            np.savez_compressed(new_path, **new_pred)
 
 
         

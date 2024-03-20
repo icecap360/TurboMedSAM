@@ -8,19 +8,19 @@ from typing import Optional, Tuple, Type
 class TeacherStudentModel(BaseModule):
     def __init__(
         self,
-        img_size,
         student: BaseModule,
         teacher: BaseModule,
         init_cfg = None
     ) -> None:
         super().__init__(init_cfg)
-        self.img_size = img_size
         self.student = student
         self.teacher = teacher
+        for param in self.teacher.parameters():
+            param.requires_grad = False
 
     def forward(self, data_batch):
-        x = data_batch['image']
-        teacher_pred = self.teacher(data_batch)
+        with torch.no_grad():
+            teacher_pred = self.teacher(data_batch)
         student_pred = self.student(data_batch)
         res = {}
         for key in student_pred.keys():
@@ -30,3 +30,8 @@ class TeacherStudentModel(BaseModule):
     
     def state_dict(self):
         return self.student.state_dict()
+    
+    def init_weights(self):
+        self.student.init_weights()
+        self.teacher.init_weights()
+        return super().init_weights()

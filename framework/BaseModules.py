@@ -35,7 +35,8 @@ class BaseModule(nn.Module, metaclass=ABCMeta):
         elif 'pretrained' in self.init_cfg['type'].lower():
             if not 'checkpoint' in self.init_cfg.keys():
                 raise Exception('Missing checkpoint')    
-            self.load_state_dict(torch.load(self.init_cfg['checkpoint']))
+            self.load_state_dict(torch.load(self.init_cfg['checkpoint']), 
+                                 strict=self.init_cfg.get('strict') or True)
         else:
             raise Exception('init_cfg is formatted incorrectly')
         
