@@ -27,27 +27,31 @@ __all__ = ['LiteMedSAM']
 class LiteMedSAM(BaseDetector):
     def __init__(self,
                 settings,
+                encoder = None,
                 init_cfg=None,
                 ):
         
         super().__init__(init_cfg)
         
-        encoder_cfg = settings['image_encoder']
-        self.image_encoder = TinyViT(
-            img_size=encoder_cfg['img_size'],
-            in_chans=encoder_cfg['in_chans'],
-            embed_dims=encoder_cfg['embed_dims'],
-            depths=encoder_cfg['depths'],
-            num_heads=encoder_cfg['num_heads'],
-            window_sizes=encoder_cfg['window_sizes'],
-            mlp_ratio=encoder_cfg['mlp_ratio'],
-            drop_rate=encoder_cfg['drop_rate'],
-            drop_path_rate=encoder_cfg['drop_path_rate'],
-            use_checkpoint=encoder_cfg['use_checkpoint'],
-            mbconv_expand_ratio=encoder_cfg['mbconv_expand_ratio'],
-            local_conv_size=encoder_cfg['local_conv_size'],
-            layer_lr_decay=encoder_cfg['layer_lr_decay']
-        )
+        if encoder:
+            self.image_encoder = encoder
+        else:
+            encoder_cfg = settings['image_encoder']
+            self.image_encoder = TinyViT(
+                img_size=encoder_cfg['img_size'],
+                in_chans=encoder_cfg['in_chans'],
+                embed_dims=encoder_cfg['embed_dims'],
+                depths=encoder_cfg['depths'],
+                num_heads=encoder_cfg['num_heads'],
+                window_sizes=encoder_cfg['window_sizes'],
+                mlp_ratio=encoder_cfg['mlp_ratio'],
+                drop_rate=encoder_cfg['drop_rate'],
+                drop_path_rate=encoder_cfg['drop_path_rate'],
+                use_checkpoint=encoder_cfg['use_checkpoint'],
+                mbconv_expand_ratio=encoder_cfg['mbconv_expand_ratio'],
+                local_conv_size=encoder_cfg['local_conv_size'],
+                layer_lr_decay=encoder_cfg['layer_lr_decay']
+            )
         
         decoder_cfg = settings['mask_decoder']
         self.mask_decoder = MaskDecoder(

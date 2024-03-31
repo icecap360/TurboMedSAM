@@ -67,13 +67,15 @@ lr_scheduler = BaseScheduler(
 )
 
 compute = dict(
-    gpu_ids = [0,1,2],
+    gpu_ids = [0,1],
     use_cpu = False,
+    use_amp = False,
     mp_start_method = 'fork',
     opencv_num_threads=0,
     cudnn_benchmark=False,
-    workers_per_gpu=4,
+    workers_per_gpu=2,
     samples_per_gpu=8,
+    batch_size=8,
     pin_memory=False,
     prefetch_factor=2,
     broadcast_bn_buffer=True,
@@ -86,13 +88,18 @@ compute = dict(
 
 work_dir = 'work_dir'
 exp_name = os.path.basename(__file__)[:-3]
-runner_type= 'iter'
-max_epochs = 48
-max_iters = 10000
-val_freq_epoch = 1
-save_freq_epoch = 1
-val_freq_iter = 100
-save_freq_iter = 100
+runner = dict(
+    type= 'epoch',
+    max_epochs = 1, #300
+    max_iters = 10000,
+    val_freq_epoch = 1,
+    val_freq_iter = 1000,
+    save_freq_epoch = 1,
+    save_freq_iter = 1000,
+    log_freq=5,
+    resume_train = True,
+    resume_checkpoint = None,
+)
 
 loss = losses.MedSAMLoss({
     'loss_dice': 1.0,
@@ -100,14 +107,13 @@ loss = losses.MedSAMLoss({
     'loss_iou': 1.0,
 })
 metric = metrics.MedSAMMetrics(class_thresholds=[5])
-checkpoint = ''
-resume = False
 custom_hooks = []
 seed = 0
 
 data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
 pipeline_type = pipelines.CVPRMedSAMPipeline(
-    target_length=256,
+    input_img_shape=256,
+    target_mask_shape=256,
     bbox_shift=5
 )
 data = dict(

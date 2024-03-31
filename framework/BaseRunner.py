@@ -56,22 +56,27 @@ class BaseRunner(metaclass=ABCMeta):
 
     def __init__(self,
                  model: BaseModule,
-                 optimizer: torch.optim,
+                 optimizer: torch.optim.Optimizer,
                  loss: BaseLoss,
                  metric: BaseMetric,
                  lr_scheduler: BaseScheduler,
                  device,
                  work_dir,
                  logger: Logger,
-                 grad_clip : dict,
                  distributed,
+                 batch_size: int,
+                 samples_per_gpu: int,
                  use_cpu=False,
                  broadcast_bn_buffer = True,
                  save_freq=1,
+                 log_freq = 1,
                  save_optimizer=False,
-                 batch_size=None,
                  max_iters=None,
-                 max_epochs=None):
+                 max_epochs=None,
+                 use_amp = False,
+                 grad_clip = None,
+                 resume_train = False,
+                 resume_checkpoint = None):
         
         self.model = model
         self.optimizer = optimizer
@@ -81,12 +86,19 @@ class BaseRunner(metaclass=ABCMeta):
         self.metrics = metric
         self.save_freq = save_freq
         self.save_optimizer = save_optimizer
+        self.log_freq = log_freq
         self.grad_clip = grad_clip 
         self.distributed = distributed
         self.use_cpu = use_cpu
         self.device = device
         self.broadcast_bn_buffer = broadcast_bn_buffer
         self.batch_size = batch_size
+        self.samples_per_gpu = samples_per_gpu
+        self.use_amp = use_amp
+        self.scaler = torch.cuda.amp.GradScaler(enabled=self.use_amp)
+        self.resume_train = resume_train
+        self.resume_checkpoint = resume_checkpoint
+
         # create work_dir
         if isinstance(work_dir, str):
             self.work_dir = os.path.abspath(work_dir)
@@ -111,6 +123,13 @@ class BaseRunner(metaclass=ABCMeta):
 
         self._max_epochs = max_epochs
         self._max_iters = max_iters
+
+        assert (self.resume_train and self.resume_checkpoint) or not self.resume_train
+        if self.resume_train:
+            if not os.path.isabs(self.resume_checkpoint):
+                self.resume_checkpoint = os.path.join(self.work_dir, self.resume_checkpoint) 
+            assert os.path.exists(self.resume_checkpoint), 'Checkpoint must be a valid path'
+            self.resume(self.resume_checkpoint, self.distributed, map_location=self.device)
 
     @property
     def model_name(self) -> str:
@@ -172,6 +191,7 @@ class BaseRunner(metaclass=ABCMeta):
                         filename: str,
                         save_optimizer: bool = True,
                         save_scheduler: bool = True,
+                        save_scaler: bool = True,
                         meta: Optional[Dict] = None,
                         create_symlink: bool = True) -> None:
         """Save the checkpoint.
@@ -201,10 +221,9 @@ class BaseRunner(metaclass=ABCMeta):
             # meta.update(epoch=self.epoch + 1, iter=self.iter) otherwise
             # there will be problems with resumed checkpoints.
             # More details in https://github.com/open-mmlab/mmcv/pull/1108
-        meta.update(epoch=self._epoch + 1, iter=self._iter)
+        meta.update(epoch=self._epoch, iter=self._iter, logger=self.logger.path)
 
         filepath = os.path.join(out_dir, filename)
-        optimizer = self.optimizer if save_optimizer else None
         
         if hasattr(self.model, 'CLASSES') and self.model.CLASSES is not None:
             # save class name to the meta
@@ -219,7 +238,8 @@ class BaseRunner(metaclass=ABCMeta):
             checkpoint['optimizer'] = self.optimizer.state_dict()
         if save_scheduler:
             checkpoint['lr_scheduler'] = self.lr_scheduler.state_dict()
-
+        if save_scaler:
+            checkpoint['scaler'] = self.scaler.state_dict()
         torch.save(checkpoint, filepath)
         
         # in some environments, `os.symlink` is not supported, you may need to
@@ -273,9 +293,13 @@ class BaseRunner(metaclass=ABCMeta):
     def load_checkpoint(
         self,
         filename: str,
+        distributed,
         map_location = torch.device('cpu'),
         strict: bool = True,
-        revise_keys = [] #[(r'^module.', '')],
+        load_optimizer: bool = True,
+        load_lr_scheduler: bool = True,
+        load_scaler: bool = True,
+        revise_keys = [],
     ):
         checkpoint = torch.load(filename, 
                                 map_location=map_location,
@@ -287,14 +311,27 @@ class BaseRunner(metaclass=ABCMeta):
             
         if 'state_dict' in checkpoint:
             model_state_dict = checkpoint['state_dict']
+            if 'optimizer' in checkpoint and load_optimizer:
+                self.optimizer.load_state_dict(checkpoint['optimizer'])
+            if 'lr_scheduler' in checkpoint and load_lr_scheduler:
+                self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+            if 'scaler' in checkpoint and load_scaler:
+                self.scaler.load_state_dict(checkpoint['scaler'])
+            self._epoch = checkpoint['meta']['epoch']
+            self._iter = checkpoint['meta']['iter']
         else:
             model_state_dict = checkpoint 
-             
-        self.model.load_checkpoint(
-            model_state_dict,
-            logger = self.logger,
-            strict = strict,
-            revise_keys = revise_keys)
+        
+        if distributed:
+            self.model.module.load_checkpoint(
+                model_state_dict,
+                strict = strict,
+                revise_keys = revise_keys)
+        else:
+            self.model.load_checkpoint(
+                model_state_dict,
+                strict = strict,
+                revise_keys = revise_keys)
         
         return checkpoint
         # state_dict = torch.load(filename, 
@@ -332,44 +369,16 @@ class BaseRunner(metaclass=ABCMeta):
     @no_type_check
     def resume(self,
                checkpoint: str,
+               distributed, 
                resume_optimizer: bool = True,
                resume_lr_scheduler: bool = True,
-               map_location: Union[str, Callable] = 'default'):
-        if map_location == 'default':
-            checkpoint = self.load_checkpoint(checkpoint)
-        else:
-            checkpoint = self.load_checkpoint(
-                checkpoint, map_location=map_location)
-
-        self._epoch = checkpoint['meta']['epoch']
-        self._iter = checkpoint['meta']['iter']
-        if self.meta is None:
-            self.meta = {}
-        # self.meta.setdefault('hook_msgs', {})
-        # load `last_ckpt`, `best_score`, `best_ckpt`, etc. for hook messages
-        # self.meta['hook_msgs'].update(checkpoint['meta'].get('hook_msgs', {}))
-
-        # Re-calculate the number of iterations when resuming
-        # models with different number of GPUs
-        # if 'config' in checkpoint['meta']:
-        #     config = mmcv.Config.fromstring(
-        #         checkpoint['meta']['config'], file_format='.py')
-        #     previous_gpu_ids = config.get('gpu_ids', None)
-        #     if previous_gpu_ids and len(previous_gpu_ids) > 0 and len(
-        #             previous_gpu_ids) != self.world_size:
-        #         self._iter = int(self._iter * len(previous_gpu_ids) /
-        #                          self.world_size)
-        #         self.logger.info('the iteration number is changed due to '
-        #                          'change of GPU number')
-
-        # resume meta information meta
-        self.meta = checkpoint['meta']
-
-        if 'optimizer' in checkpoint and resume_optimizer:
-            self.optimizer.load_state_dict(checkpoint['optimizer'])
-        if 'lr_scheduler' in checkpoint and resume_lr_scheduler:
-            self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
-            
+               resume_scaler: bool = True,
+               map_location: Union[str, Callable] = 'cpu'):
+        self.load_checkpoint(checkpoint, distributed, map_location, strict=True, 
+                             load_optimizer=resume_optimizer, 
+                             load_lr_scheduler=resume_lr_scheduler, 
+                             load_scaler=resume_scaler, 
+                             revise_keys= [(r'^module.', '')])
         self.log_info_and_print('resumed epoch {}, iter {}'.format(self._epoch, self._iter))
         
     def get_hook_info(self) -> str:
@@ -458,3 +467,36 @@ class BaseRunner(metaclass=ABCMeta):
         
         tmpdir.cleanup()
         return result_from_ranks
+    
+    # @torch.no_grad()
+    def val(self, iters, max_iters, data_loader):
+        if self.distributed:
+            dist.barrier()
+        self.call_hook('before_val_epoch')
+        self.log_info_and_print('\n\n-------VALIDATING-------')
+        time.sleep(2)  # Prevent possible deadlock during epoch transition
+        self.model.eval()
+        
+        loss_dict, metrics_dict = self.get_results(data_loader, gpu_collect=True)
+            
+        if self.distributed and self._rank != 0:
+            dist.barrier()
+        else:
+            weighted_sum_loss = self.loss.calc_weighted_loss(loss_dict, self.loss.loss_weight, requires_grad=False, device=self.device)
+        
+            float_loss_dict = {key: value.item() for key, value in loss_dict.items()}
+            float_metrics_dict = {key: value.item() for key, value in metrics_dict.items()}
+            float_weighted_sum_loss = weighted_sum_loss.item()
+            
+            val_message = self.logger.val_message(
+                        loader_name = data_loader.get_name(),
+                        iters= iters,
+                        max_iters = max_iters,
+                        loss_dict = float_loss_dict,
+                        total_loss = float_weighted_sum_loss,
+                        metrics_dict = float_metrics_dict
+                    )
+            self.log_info_and_print(val_message)
+        
+        if self.distributed and self._rank == 0:
+            dist.barrier()

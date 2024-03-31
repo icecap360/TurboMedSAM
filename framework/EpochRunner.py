@@ -24,6 +24,7 @@ from .utils import CustomDict, multi_gpu_test, single_gpu_test, dict_to_device, 
 from copy import deepcopy
 import tempfile
 from .BaseRunner import BaseRunner
+from .Profiling import AverageMeter, ProgressMeter
 
 class EpochBasedRunner(BaseRunner):
     """Epoch-based Runner.
@@ -32,150 +33,119 @@ class EpochBasedRunner(BaseRunner):
     """
     def __init__(self,
                  model: BaseModule,
-                 optimizer: torch.optim,
+                 optimizer: dict,
                  loss: BaseLoss,
                  metric: BaseMetric,
                  lr_scheduler: BaseScheduler,
                  device,
                  work_dir,
                  logger: Logger,
-                 grad_clip : dict,
                  distributed,
-                 use_cpu=False,
-                 broadcast_bn_buffer = True,
-                 val_freq_epoch=1,
-                 save_freq=1,
-                 save_optimizer=False,
-                 max_epochs=None,
-                 batch_size=None):
-        self.val_freq_epoch = val_freq_epoch
+                 compute: dict,
+                 runner: dict,
+                 save_optimizer=False):
+        self.val_freq_epoch = runner['val_freq_epoch']
         super().__init__(model=model,
-                 optimizer=optimizer,
+                 optimizer=optimizer['optimizer'],
                  loss=loss,
                  metric=metric,
                  lr_scheduler=lr_scheduler,
                  device=device,
                  work_dir=work_dir,
                  logger=logger,
-                 grad_clip=grad_clip,
                  distributed=distributed,
-                 use_cpu=use_cpu,
-                 broadcast_bn_buffer=broadcast_bn_buffer,
-                 save_freq=save_freq,
+                 use_cpu=compute['use_cpu'],
+                 broadcast_bn_buffer=compute['broadcast_bn_buffer'],
+                 save_freq=runner['save_freq_epoch'],
                  save_optimizer=save_optimizer,
                  max_iters=None,
-                 max_epochs=max_epochs,
-                 batch_size=batch_size)
+                 max_epochs=runner['max_epochs'],
+                 batch_size=compute['batch_size'],
+                 samples_per_gpu=compute['samples_per_gpu'],
+                 log_freq = runner['log_freq'],
+                 use_amp=compute['use_amp'],
+                 grad_clip=optimizer.get('grad_clip'),
+                 resume_train=runner['resume_train'],
+                 resume_checkpoint=runner.get('resume_checkpoint')
+                 )
 
     def train_epoch(self, data_loader: DataLoader):
         self.call_hook('before_train_epoch')
         time.sleep(2)  # Prevent possible deadlock during epoch transition
         self.model.train()
         
+        batch_time = AverageMeter('Model', ':6.3f')
+        data_time = AverageMeter('Data', ':6.3f')
+        debug_time = AverageMeter('Debug', ':6.3f')
+        progress = ProgressMeter(
+            len(data_loader.sampler),
+            [batch_time, data_time])
+        end = time.time()
+
         samples_processed = 0
+        
         for i, data_batch in enumerate(data_loader):
+            
             inputs, targets = data_batch[0], data_batch[1]
             batch_size = len_dict(inputs)
             targets = dict_to_device(targets, self.device)
             inputs = dict_to_device(inputs, self.device)
+            data_time.update(time.time() - end)
+            end = time.time()
+            
             self._inner_iter = i
             self.call_hook('before_train_iter')
-            
             self.optimizer.zero_grad()
-            preds = self.model(inputs)
+            with torch.autocast(device_type=self.device, dtype=torch.float16, enabled=self.use_amp):
+                preds = self.model(inputs)    
+                loss_dict = self.loss.forward_loss(preds, targets)
+                weighted_sum_loss = self.loss.calc_weighted_loss(loss_dict, self.loss.loss_weight, requires_grad=True, device=self.device)
             
-            loss_dict = self.loss.forward_loss(preds, targets)
+            self.scaler.scale(weighted_sum_loss).backward()
+
+            if self.grad_clip != None:
+                self.scaler.unscale_(self.optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), 
+                    max_norm = self.grad_clip['max_norm'], 
+                    norm_type = self.grad_clip['norm_type'])
             
-            weighted_sum_loss = self.loss.calc_weighted_loss(loss_dict, self.loss.loss_weight, requires_grad=True, device=self.device)
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
             
-            float_loss_dict = {key: value.item() for key, value in loss_dict.items()}
-            float_weighted_sum_loss = weighted_sum_loss.item()
+            self.lr_scheduler.step_iter()
+
+            batch_time.update(time.time() - end)
             
             samples_processed += batch_size
-            
-            train_message = self.logger.train_epoch_message(
-                    epoch = self._epoch+1,
-                    rank = self._rank,
-                    max_epoch = self._max_epochs,
-                    samples_processed = samples_processed,
-                    total_samples = len(data_loader.sampler),
-                    lr = self.current_lr(),
-                    loss_dict = float_loss_dict,
-                    total_loss = float_weighted_sum_loss
-                )
-            self.log_train(train_message)
-            
-            weighted_sum_loss.backward()
-            torch.nn.utils.clip_grad_norm_(
-                self.model.parameters(), 
-                max_norm = self.grad_clip['max_norm'], 
-                norm_type = self.grad_clip['norm_type'])
-            self.optimizer.step()
-            self.lr_scheduler.step_iter()
+
+            if i % self.log_freq == 0:
+                float_loss_dict = {key: value.item() for key, value in loss_dict.items()}
+                float_weighted_sum_loss = weighted_sum_loss.item()
+                train_message = self.logger.train_epoch_message(
+                        rank = self._rank,
+                        epoch = self._epoch,
+                        max_epoch = self._max_epochs,
+                        samples_processed = samples_processed,
+                        total_samples = len(data_loader.sampler),
+                        lr = self.current_lr(),
+                        loss_dict = float_loss_dict,
+                        total_loss = float_weighted_sum_loss,
+                        progress = progress
+                    )
+                self.log_train(train_message)
             
             self.call_hook('after_train_iter')
             del data_batch, inputs, preds, batch_size
             self._iter += 1
+            end = time.time()
         
         self.lr_scheduler.step()
-        if self._epoch % self.save_freq == 0:
-            if self.distributed:
-                dist.barrier()
-                if self._rank != 0:
-                    dist.barrier()
-                else:
-                    self.save_checkpoint(
-                        out_dir = self.work_dir,
-                        save_optimizer = self.save_optimizer,
-                        save_scheduler = True,
-                        filename = 'epoch_{epoch}.pth'.format(
-                            epoch=self._epoch
-                        ))
-                    dist.barrier()
-            else:
-                self.save_checkpoint(
-                    out_dir = self.work_dir,
-                    save_optimizer = self.save_optimizer,
-                    save_scheduler = True,
-                    filename = 'epoch_{epoch}.pth'.format(
-                            epoch=self._epoch
-                        ))
         self.call_hook('after_train_epoch')
     
     # @torch.no_grad()
-    def val(self, data_loader):
-        if self.distributed:
-            dist.barrier()
-        self.call_hook('before_val_epoch')
-        self.log_info_and_print('\nVALIDATING\n')
-        time.sleep(2)  # Prevent possible deadlock during epoch transition
-        self.model.eval()
-        
-        loss_dict, metrics_dict = self.get_results(data_loader, gpu_collect=True)
-            
-        if self.distributed and self._rank != 0:
-            dist.barrier()
-        else:
-            weighted_sum_loss = self.loss.calc_weighted_loss(loss_dict, self.loss.loss_weight, requires_grad=False, device=self.device)
-        
-            float_loss_dict = {key: value.item() for key, value in loss_dict.items()}
-            float_metrics_dict = {key: value.item() for key, value in metrics_dict.items()}
-            float_weighted_sum_loss = weighted_sum_loss.item()
-            
-            val_message = self.logger.val_epoch_message(
-                        loader_name = data_loader.get_name(),
-                        epoch = self._epoch + 1,
-                        max_epoch = self._max_epochs,
-                        loss_dict = float_loss_dict,
-                        total_loss = float_weighted_sum_loss,
-                        metrics_dict = float_metrics_dict
-                    )
-            self.log_info_and_print(val_message)
-        
-        if self.distributed and self._rank == 0:
-            dist.barrier()
-        
-        self.call_hook('after_val_epoch')
+    def val(self, data_loader, epoch):
+        super().val(epoch, self._max_epochs, data_loader)
 
     def run(self,
             data_loader_train: DataLoader,
@@ -196,22 +166,46 @@ class EpochBasedRunner(BaseRunner):
             'max_epochs must be specified during instantiation')
 
         work_dir = self.work_dir 
-        
+
         self.log_info_and_print('Start running, host: {}, work_dir: {}'.format(get_host_info(), work_dir))
         self.log_info_and_print('Hooks will be executed in the following order:\n{}'.format(self.get_hook_info()))
         self.log_info_and_print('max: {} epochs'.format(self._max_epochs))
         self.call_hook('before_run')
-
+        self.logger.reset_start_time_eta()
+        
         while self._epoch < self._max_epochs:
             data_loader_train.sampler.set_epoch(self._epoch)
             self.train_epoch(data_loader=data_loader_train)
             for loader in data_loader_val:
                 loader.sampler.set_epoch(self._epoch)
-            if self._epoch % self.val_freq_epoch == 0:
-                for loader in data_loader_val:
-                    self.val(data_loader=loader,)
             
             self._epoch += 1
+            if self._epoch % self.save_freq == 0:
+                if self.distributed:
+                    dist.barrier()
+                    if self._rank != 0:
+                        dist.barrier()
+                    else:
+                        self.save_checkpoint(
+                            out_dir = self.work_dir,
+                            save_optimizer = self.save_optimizer,
+                            save_scheduler = True,
+                            filename = 'epoch_{epoch}.pth'.format(
+                                epoch=self._epoch
+                            ))
+                        dist.barrier()
+                else:
+                    self.save_checkpoint(
+                        out_dir = self.work_dir,
+                        save_optimizer = self.save_optimizer,
+                        save_scheduler = True,
+                        filename = 'epoch_{epoch}.pth'.format(
+                                epoch=self._epoch
+                            ))
+                self.logger.info('Saving to checkpoint...')
+            if self._epoch % self.val_freq_epoch == 0:
+                for loader in data_loader_val:
+                    self.val(loader, self._epoch)
 
         time.sleep(1)  # wait for some hooks like loggers to finish
         self.call_hook('after_run')

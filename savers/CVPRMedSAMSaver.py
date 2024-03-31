@@ -9,6 +9,9 @@ from framework import BaseDataset, BaseSaver
 import cv2
 import random
 import shutil
+import multiprocessing as mp
+
+__all__ = ['CVPRMedSAMSaver']
 
 class CVPRMedSAMSaver(BaseSaver):
     """Face Landmarks dataset."""
@@ -40,19 +43,30 @@ class CVPRMedSAMSaver(BaseSaver):
         for i in range(len(paths)):
             path = paths[i]
             new_pred = {}
-            for key in self.keys:
-                assert key in preds.keys()
-                pred = preds[key][i]
-                if torch.is_tensor(pred):
-                    new_pred[key] = pred.cpu().detach().numpy()
-                elif isinstance(pred, np.ndarray):
-                    new_pred[key] = pred
-                else:
-                    new_pred[key] = np.array(pred)
+            pred = preds['embeddings'][i]
+            new_pred['embeddings'] = pred.half().cpu().detach().numpy()
             new_path = os.path.join(self.result_dir, 
                                     path.replace(self.root_data_dir, ''))
             np.savez_compressed(new_path, **new_pred)
+        # for i in range(len(paths)):
+        #     path = paths[i]
+        #     new_pred = {}
+        #     for key in self.keys:
+        #         assert key in preds.keys()
+        #         pred = preds[key][i]
+        #         if torch.is_tensor(pred):
+        #             new_pred[key] = pred.cpu().detach().numpy()
+        #         elif isinstance(pred, np.ndarray):
+        #             new_pred[key] = pred
+        #         else:
+        #             new_pred[key] = np.array(pred)
+        #     new_path = os.path.join(self.result_dir, 
+        #                             path.replace(self.root_data_dir, ''))
+        #     np.savez_compressed(new_path, **new_pred)
 
-
-        
-    
+    def save_single(self, path, pred):
+        new_pred = {}
+        new_pred['embeddings'] = pred.half().cpu().detach().numpy()
+        new_path = os.path.join(self.result_dir, 
+                                path.replace(self.root_data_dir, ''))
+        np.savez_compressed(new_path, **new_pred)

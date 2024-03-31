@@ -10,15 +10,17 @@ from losses import SampleLoss
 
 model = models.SampleModel()
 
-optimizer = torch.optim.SGD(model.parameters(), lr=0.03)
+optimizer = {
+    "optimizer": torch.optim.SGD(model.parameters(), lr=0.001)
+}
 grad_clip = dict(max_norm=35, norm_type=2)
 lr_scheduler = BaseScheduler(
     regular_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-            optimizer,
+            optimizer['optimizer'],
             milestones=[2,4],
             gamma=0.1
         ),
-    optimizer=optimizer,
+    optimizer=optimizer['optimizer'],
     warmup='linear',
     warmup_iters=500,
     warmup_ratio=0.1
@@ -27,11 +29,13 @@ lr_scheduler = BaseScheduler(
 compute = dict(
     gpu_ids = [0],
     use_cpu = False,
+    use_amp = False,
     mp_start_method = 'fork',
     opencv_num_threads=0,
     cudnn_benchmark=False,
     workers_per_gpu=4,
     samples_per_gpu=2,
+    batch_size=2,
     pin_memory=False,
     broadcast_bn_buffer = True,
     prefetch_factor=2,
@@ -44,21 +48,24 @@ compute = dict(
 
 work_dir = 'work_dir'
 exp_name = os.path.basename(__file__)[:-3]
-runner_type= 'iter'
-max_epochs = 48
-max_iters = 10000
-val_freq_epoch = 1
-save_freq_epoch = 1
-val_freq_iter = 100
-save_freq_iter = 100
+runner = dict(
+    type= 'epoch',
+    max_epochs = 5, #300
+    max_iters = 10000,
+    val_freq_epoch = 1,
+    val_freq_iter = 1000,
+    save_freq_epoch = 1,
+    save_freq_iter = 1000,
+    log_freq=5,
+    resume_train = True,
+    resume_checkpoint = 'epoch_2.pth',
+)
 loss = SampleLoss(
     loss_weight = {
         'loss_pred': 1.0
     }
     )
 metric = SampleMetric()
-checkpoint = ''
-resume = False
 custom_hooks = []
 seed = 0
 

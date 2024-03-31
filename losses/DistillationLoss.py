@@ -19,10 +19,11 @@ class DistillationLoss(BaseLoss):
         self.precomputed_teacher = precomputed_teacher
         self.mse_loss = torch.nn.MSELoss()
     def forward_loss(self, pred, target):
-        student_outputs = pred['student_embeddings']
         if self.precomputed_teacher:
+            student_outputs = pred['embeddings']
             teacher_outputs = target['teacher_embeddings']
         else:
+            student_outputs = pred['student_embeddings']
             teacher_outputs = pred['teacher_embeddings']
         if self.distillation_type == 'soft':
             T = self.tau

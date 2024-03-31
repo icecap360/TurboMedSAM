@@ -12,7 +12,7 @@
             "module":"torch.distributed.launch",
             // with args...
             "args":["--use_env","--nproc_per_node=3","--master_addr=127.0.0.1",
-            "--master_port=29502", "train.py", "DistillRepVit.py"],
+            "--master_port=29502", "train.py", "DistillRepViT-ViTB_PreComputed.py"],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -24,7 +24,7 @@
             // we launch a module...
             "module":"torch.distributed.launch",
             // with args...
-            "args":["--use_env","--nproc_per_node=3","--master_addr=127.0.0.1",
+            "args":["--use_env","--nproc_per_node=6","--master_addr=127.0.0.1",
             "--master_port=29502","inference.py", "MedSAMEncoder1024.py", "--save_result=True"],
             "console": "integratedTerminal",
             "justMyCode": false
@@ -38,7 +38,21 @@
             "cwd": "${workspaceFolder}",
             "justMyCode": false,
             "console": "integratedTerminal",
-            "args": ["DistillRepVit_PreComputedEncoder.py"]
+            "args": ["DistillRepViT-ViTB_PreComputed.py"]
+            // "args": ["DistillRepViT-LiteMedSAM.py"]
+            // "args": ["Sample.py"]
+
+        },
+
+        {
+            "name": "FFCV Writer",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ffcv_dataset_writer.py",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "args": ["DistillRepVit.py"]
         }
     ]
 }

@@ -247,3 +247,4 @@ class CustomDict():
 def len_dict(data):
     for v in data.values():
         return len(v)
+    

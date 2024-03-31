@@ -8,6 +8,7 @@ import torch.distributed as dist
 from framework import BaseDataset
 import cv2
 import random
+import json  
 
 class CVPRMedSAMDataset(BaseDataset):
     """Face Landmarks dataset."""
@@ -226,7 +227,7 @@ class CVPRMedSAMEncoderPreComputed(BaseDataset):
         npz = np.load(encoder_result_path, allow_pickle=True, mmap_mode="r")
 
         return self.transform_databatch({'image': image},
-                                        {'teacher_embeddings': npz['embeddings']},
+                                        {'teacher_embeddings': npz['embeddings'].astype(np.float32)},
                                         meta)    
     
     def get_modality(self, path:str):
@@ -246,6 +247,64 @@ class CVPRMedSAMEncoderPreComputed(BaseDataset):
     def get_categories(self):
         return self.classes
     
+class CVPRMedSAMDatasetFFCVWrite(Dataset):
+    """Face Landmarks dataset."""
 
+    def __init__(self, root_dir, split_type):
+        """
+        Arguments:
+            csv_file (string): Path to the csv file with annotations.
+            root_dir (string): Directory with all the images.
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        self.split_type = split_type
+        self.root_dir = root_dir
+        self.npz_dir = os.path.join(self.root_dir, self.split_type)
+        self.classes = os.listdir(self.npz_dir)
+
+        self.npz_paths = glob.glob(os.path.join(self.npz_dir, "**/*.npz"), recursive=True)
+        
+    def __len__(self):
+        return len(self.npz_paths)
+
+    def __getitem__(self, idx):
+        # if torch.is_tensor(idx):
+        #     idx = idx.tolist()
+        # npz_paths = [self.npz_paths[i] for i in idx]
+        # # classes = [path.split_type('/')[0] for path in npz_paths]
+        # npzs = [np.load(n, allow_pickle=True, mmap_mode="r") for n in npz_paths]
+        # imgs = [npz['imgs'] for npz in npzs]
+        # gts = [npz['gts'] for npz in npzs]
+        
+        npz_path = self.npz_paths[idx]
+        npz = np.load(npz_path, allow_pickle=True, mmap_mode="r")
+        
+        image = npz['imgs'] 
+        assert image.shape[2] == 3
+        
+        target = npz['gts']
+        if len(target.shape) != 3:
+            target = np.stack((target,target,target), 2)
+            
+        meta = dict(
+            idx=idx,
+            npz_path = npz_path,
+            original_shape = image.shape,
+            modality = self.get_modality(npz_path)
+        )
+
+        if min(image.shape) > 3:
+            meta['image_type'] = '3D'
+            meta['spacing'] = npz['spacing']
+        else:
+            meta['image_type'] = '2D'
+
+        return image, target, json.dumps(meta, default=int)
+
+    def get_modality(self, path:str):
+        path = path.replace(self.npz_dir, '')
+        return os.path.normpath(path).split(os.sep)[0]
+    
 def get_MedSAM_classes(root_dir, split_type):
     return os.listdir(os.path.join(root_dir, split_type))

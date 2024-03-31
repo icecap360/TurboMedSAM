@@ -33,43 +33,44 @@ class IterBasedRunner(BaseRunner):
     """
     def __init__(self,
                  model: BaseModule,
-                 optimizer: torch.optim,
+                 optimizer: dict,
                  loss: BaseLoss,
                  metric: BaseMetric,
                  lr_scheduler: BaseScheduler,
                  device,
                  work_dir,
                  logger: Logger,
-                 grad_clip : dict,
                  distributed,
-                 max_iters,
-                 use_cpu=False,
-                 broadcast_bn_buffer = True,
-                 val_freq_iter=1,
-                 save_freq=1,
+                 compute: dict,
+                 runner: dict,
                  save_optimizer=False,
-                 batch_size=None,
                  ):
-        self.val_freq_iter = val_freq_iter
+        self.val_freq_iter = runner['val_freq_iter']
         self.sentinal = 'END'
         self.samples_processed = 0
         super().__init__(model=model,
-                 optimizer=optimizer,
+                 optimizer=optimizer['optimizer'],
                  loss=loss,
                  metric=metric,
                  lr_scheduler=lr_scheduler,
                  device=device,
                  work_dir=work_dir,
                  logger=logger,
-                 grad_clip=grad_clip,
                  distributed=distributed,
-                 use_cpu=use_cpu,
-                 broadcast_bn_buffer=broadcast_bn_buffer,
-                 save_freq=save_freq,
+                 use_cpu=compute['use_cpu'],
+                 broadcast_bn_buffer=compute['broadcast_bn_buffer'],
+                 save_freq=runner['save_freq_iter'],
                  save_optimizer=save_optimizer,
-                 max_iters=max_iters,
+                 max_iters=runner['max_iters'],
                  max_epochs=None,
-                 batch_size=batch_size)
+                 batch_size=compute['batch_size'],
+                 samples_per_gpu=compute['samples_per_gpu'],
+                 log_freq = runner['log_freq'],
+                 use_amp=compute['use_amp'],
+                 grad_clip=optimizer.get('grad_clip'),
+                 resume_train=runner['resume_train'],
+                 resume_checkpoint=runner.get('resume_checkpoint')
+                 )
     
     def train_iter(self, inputs, targets):
         self.model.train()
@@ -80,38 +81,39 @@ class IterBasedRunner(BaseRunner):
         self.call_hook('before_train_iter')
             
         self.optimizer.zero_grad()
-        preds = self.model(inputs)
-            
-        loss_dict = self.loss.forward_loss(preds, targets)
-            
-        weighted_sum_loss = self.loss.calc_weighted_loss(loss_dict, self.loss.loss_weight, requires_grad=True, device=self.device)
-            
-        float_loss_dict = {key: value.item() for key, value in loss_dict.items()}
-        float_weighted_sum_loss = weighted_sum_loss.item()
-            
-        self.samples_processed += batch_size
+        with torch.autocast(device_type=self.device, dtype=torch.float16, enabled=self.use_amp):
+            preds = self.model(inputs)    
+            loss_dict = self.loss.forward_loss(preds, targets)
+            weighted_sum_loss = self.loss.calc_weighted_loss(loss_dict, self.loss.loss_weight, requires_grad=True, device=self.device)
         
-        train_message = self.logger.train_iter_message(
-                    rank = self._rank,
-                    iters=self._iter,
-                    max_iters = self._max_iters,
-                    lr = self.current_lr(),
-                    loss_dict = float_loss_dict,
-                    total_loss = float_weighted_sum_loss
-                )
-        self.log_train(train_message)
-            
-        weighted_sum_loss.backward()
-        torch.nn.utils.clip_grad_norm_(
+        self.scaler.scale(weighted_sum_loss).backward()
+        if self.grad_clip != None:
+            self.scaler.unscale_(self.optimizer)
+            torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(), 
                 max_norm = self.grad_clip['max_norm'], 
                 norm_type = self.grad_clip['norm_type'])
-        self.optimizer.step()
+        
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
         self.lr_scheduler.step_iter()
+        
+        self.samples_processed += batch_size
+        if self._iter % self.log_freq == 0:
+            float_loss_dict = {key: value.item() for key, value in loss_dict.items()}
+            float_weighted_sum_loss = weighted_sum_loss.item()
+            train_message = self.logger.train_iter_message(
+                        rank = self._rank,
+                        iters=self._iter,
+                        max_iters = self._max_iters,
+                        lr = self.current_lr(),
+                        loss_dict = float_loss_dict,
+                        total_loss = float_weighted_sum_loss
+                    )
+            self.log_train(train_message)
         
         self.call_hook('after_train_iter')
 
-        self.lr_scheduler.step()
         if self._iter % self.save_freq == 0:
             if self.distributed:
                 dist.barrier()
@@ -138,43 +140,14 @@ class IterBasedRunner(BaseRunner):
                             batch_sz = self.batch_size,
                             world_size=self._world_size
                         ))
+            self.logger.log('Saving to checkpoint...')
+
         self.call_hook('after_train_epoch')
     
-    # @torch.no_grad()
+        # @torch.no_grad()
     def val(self, data_loader):
-        if self.distributed:
-            dist.barrier()
-        self.call_hook('before_val_epoch')
-        self.log_info_and_print('\nVALIDATING\n')
-        time.sleep(2)  # Prevent possible deadlock during epoch transition
-        self.model.eval()
-
-        loss_dict, metrics_dict = self.get_results(data_loader, gpu_collect=True)
-        
-        if self.distributed and self._rank != 0:
-            dist.barrier()
-        else:
-            weighted_sum_loss = self.loss.calc_weighted_loss(loss_dict, self.loss.loss_weight, requires_grad=False, device=self.device)
-        
-            float_loss_dict = {key: value.item() for key, value in loss_dict.items()}
-            float_metrics_dict = {key: value.item() for key, value in metrics_dict.items()}
-            float_weighted_sum_loss = weighted_sum_loss.item()
-            
-            val_message = self.logger.val_iter_message(
-                        loader_name = data_loader.get_name(),
-                        iters=self._iter,
-                        max_iters = self._max_iters,
-                        loss_dict = float_loss_dict,
-                        total_loss = float_weighted_sum_loss,
-                        metrics_dict = float_metrics_dict
-                    )
-            self.log_info_and_print(val_message)
-        
-        if self.distributed and self._rank == 0:
-            dist.barrier()
-        
-        self.call_hook('after_val_epoch')
-
+        super().val(self._iter, self.max_iters, data_loader)
+    
     def run(self,
             data_loader_train: DataLoader,
             data_loader_val: list,
@@ -202,6 +175,8 @@ class IterBasedRunner(BaseRunner):
 
         data_loader_train_iter = iter(data_loader_train)
         self.call_hook('before_train_epoch')
+        self.logger.reset_start_time_eta()
+
         while self._iter < self._max_iters:
             self._iter += 1
             data_batch = next(data_loader_train_iter, self.sentinal)
@@ -209,6 +184,7 @@ class IterBasedRunner(BaseRunner):
             if type(data_batch) == type(self.sentinal) and data_batch == self.sentinal:
                 self.call_hook('after_train_epoch')
                 self._epoch += 1
+                self.lr_scheduler.step()
                 data_loader_train.sampler.set_epoch(self._epoch)
                 for loader in data_loader_val:
                     loader.sampler.set_epoch(self._epoch)

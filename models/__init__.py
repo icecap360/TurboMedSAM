@@ -4,3 +4,4 @@ from .SimpleMedSAMModel import *
 from .ViTMedSAMModel import *
 from .RepViTModel import *
 from .TeacherStudentModel import *
+from .LiteMedSAMEncoder import *

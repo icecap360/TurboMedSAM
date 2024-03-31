@@ -45,7 +45,7 @@ class BaseScheduler(_LRScheduler):
         self.warmup_by_epoch = warmup_by_epoch
         self.iter_cnt = 0
 
-        self._last_lr = self.regular_scheduler.get_last_lr()
+        self.latest_lr = self.regular_scheduler.get_last_lr()
         
         super(BaseScheduler, self).__init__(optimizer, last_epoch=last_epoch, verbose=verbose)
         self.update_lr()
@@ -54,16 +54,16 @@ class BaseScheduler(_LRScheduler):
         # for group in self.optimizer.param_groups:
         #         group.setdefault('initial_lr', group['lr'])
     
-    def state_dict(self):
+    def state_dict(self, destination=None, prefix=None, keep_vars=None):
         """Returns the state of the scheduler as a :class:`dict`.
 
         It contains an entry for every variable in self.__dict__ which
         is not the optimizer.
         """
         state_dict = {key: value for key, value in self.__dict__.items() if key not in ('optimizer', 'base_scheduler')}
-        state_dict['base_scheduler'] = {
-            "base_scheduler": self.regular_scheduler.state_dict()
-            }
+        # state_dict['base_scheduler'] = {
+        #     "base_scheduler": self.regular_scheduler.state_dict()
+        #     }
         return state_dict
 
     def load_state_dict(self, state_dict):
@@ -73,24 +73,30 @@ class BaseScheduler(_LRScheduler):
             state_dict (dict): scheduler state. Should be an object returned
                 from a call to :meth:`state_dict`.
         """
-        base_scheduler = state_dict.pop('base_scheduler')
-        self.__dict__.update(state_dict)
-        # Restore state_dict keys in order to prevent side effects
-        # https://github.com/pytorch/pytorch/issues/32756
-        state_dict['base_scheduler'] = base_scheduler
-
-        self.regular_scheduler.load_state_dict(base_scheduler)
-
+        self.regular_lr = state_dict['regular_lr']
+        self.iter_cnt = state_dict['iter_cnt']
+        self.base_lrs = state_dict['base_lrs']
+        self.last_epoch = state_dict['last_epoch']
+        self._step_count = state_dict['_step_count']
+        # self.__dict__.update(state_dict)
+        
+    def get_lr(self):
+        return self.latest_lr
+    
     def step_iter(self):
         self.iter_cnt += 1
         self.update_lr()
 
     def step(self, epoch=None):
-        self.regular_scheduler.step(epoch=epoch)
-        self.regular_lr = self.regular_scheduler.get_last_lr()
-        self._last_lr = self.regular_lr
-        self.update_lr()
+        # This is code currently gives a depreciation warning.
+        # To get rid of this warning, create a step_epoch() routine
+        # and remove the call to regular_scheduler.step in this routine  
         self.last_epoch += 1
+        self.regular_scheduler.step(epoch=self.last_epoch) # ensure synchornization of schedulers
+        self.regular_lr = self.regular_scheduler.get_lr()
+        self.latest_lr = self.regular_lr
+        self.update_lr()
+        super().step(epoch=self.last_epoch)
 
     def update_lr(self):
         if self.warmup is None or \
@@ -99,12 +105,12 @@ class BaseScheduler(_LRScheduler):
             return
         elif (not self.warmup_by_epoch and self.iter_cnt == self.warmup_iters) or \
             (self.warmup_by_epoch and self.last_epoch == self.warmup_epochs):
-            self._last_lr = self.regular_lr
+            self.latest_lr = self.regular_lr
         else:
             if self.warmup_by_epoch:
-                self._last_lr = self.get_warmup_lr_epochs()
+                self.latest_lr = self.get_warmup_lr_epochs()
             else:
-                self._last_lr = self.get_warmup_lr_iters()
+                self.latest_lr = self.get_warmup_lr_iters()
 
     def get_warmup_lr_iters(self):        
         return self._get_warmup_lr(self.regular_lr, self.iter_cnt, self.warmup_iters)

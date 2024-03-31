@@ -9,6 +9,7 @@ from tqdm import tqdm
 from progress.bar import Bar
 from framework import import_module, setup_multi_processes, init_dist_custom, get_dist_info, logger, read_cfg_str, get_device, init_random_seed, set_random_seed, create_dataloader, set_visible_devices, dict_to_device
 from copy import deepcopy
+import sys 
 
 # from framework import 
 
@@ -33,7 +34,35 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+def query_yes_no(question, default="yes"):
+    """Ask a yes/no question via raw_input() and return their answer.
 
+    "question" is a string that is presented to the user.
+    "default" is the presumed answer if the user just hits <Enter>.
+            It must be "yes" (the default), "no" or None (meaning
+            an answer is required of the user).
+
+    The "answer" return value is True for "yes" or False for "no".
+    """
+    valid = {"yes": True, "y": True, "ye": True, "no": False, "n": False}
+    if default is None:
+        prompt = " [y/n] "
+    elif default == "yes":
+        prompt = " [Y/n] "
+    elif default == "no":
+        prompt = " [y/N] "
+    else:
+        raise ValueError("invalid default answer: '%s'" % default)
+
+    while True:
+        sys.stdout.write(question + prompt)
+        choice = input().lower()
+        if default is not None and choice == "":
+            return valid[default]
+        elif choice in valid:
+            return valid[choice]
+        else:
+            sys.stdout.write("Please respond with 'yes' or 'no' " "(or 'y' or 'n').\n")
 
 def main(args):
     abs_config_path = os.path.join("configs", args.config)
@@ -58,12 +87,13 @@ def main(args):
         gpu_id = cfg.compute["gpu_ids"][0]
         set_visible_devices(gpu_id)
     elif not cfg.compute['use_cpu']:
-        assert world_size == len(cfg.compute["gpu_ids"])
-        gpu_id = cfg.compute["gpu_ids"][rank % world_size]
+        assert world_size % len(cfg.compute["gpu_ids"]) == 0
+        gpu_id = cfg.compute["gpu_ids"][rank % len(cfg.compute["gpu_ids"])]
         set_visible_devices(gpu_id)
 
     device = get_device(cfg.compute['use_cpu'])
     
+    query_yes_no('Are you sure you want to procede with inference (type y for each process)?')
     work_dir = os.path.join(cfg.work_dir, cfg.exp_name)
     os.makedirs(work_dir, exist_ok=True)
 
@@ -93,22 +123,21 @@ def main(args):
                                         cfg.seed, distributed, "inference")
     
     model = model.to(device)
-    if distributed:
-        # find_unused_parameters = cfg.get('find_unused_parameters', False)
-        model = torch.nn.parallel.DistributedDataParallel(
-            model,
-            device_ids=None,
-            broadcast_buffers=False,
-            find_unused_parameters=False
-            )
-    
-     # Synchronization of BatchNorm's buffer (running_mean and running_var) is not supported in the DDP of pytorch, which may cause the inconsistent performance of models in different ranks, so we broadcast BatchNorm's buffers of rank 0 to other ranks to avoid this.
-    if distributed and cfg.compute['broadcast_bn_buffer']:
-        for name, module in model.named_modules():
-            if isinstance(module,
-                            nn.modules.batchnorm._BatchNorm) and module.track_running_stats:
-                dist.broadcast(module.running_var, 0)
-                dist.broadcast(module.running_mean, 0)
+    # if distributed:
+    #     # find_unused_parameters = cfg.get('find_unused_parameters', False)
+    #     model = torch.nn.parallel.DistributedDataParallel(
+    #         model,
+    #         device_ids=None,
+    #         broadcast_buffers=False,
+    #         find_unused_parameters=False
+    #         )
+    #  # Synchronization of BatchNorm's buffer (running_mean and running_var) is not supported in the DDP of pytorch, which may cause the inconsistent performance of models in different ranks, so we broadcast BatchNorm's buffers of rank 0 to other ranks to avoid this.
+    # if distributed and cfg.compute['broadcast_bn_buffer']:
+    #     for name, module in model.named_modules():
+    #         if isinstance(module,
+    #                         nn.modules.batchnorm._BatchNorm) and module.track_running_stats:
+    #             dist.broadcast(module.running_var, 0)
+    #             dist.broadcast(module.running_mean, 0)
 
     model.eval()
     time.sleep(2)  # This line can prevent deadlock problem in some multi-gpu cases

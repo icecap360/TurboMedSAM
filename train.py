@@ -30,6 +30,7 @@ def parse_args():
 
 
 def main(args):
+    torch.autograd.set_detect_anomaly(True)
     abs_config_path = os.path.join("configs", args.config)
     cfg = import_module(os.path.basename(args.config), 
                         abs_config_path)
@@ -45,7 +46,7 @@ def main(args):
         raise Exception('Training for CPU is not supported')
     
     # init distributed env first, since logger depends on the dist info.
-    if not (cfg.compute['job_launcher']['type'] == 'none' and not torch.distributed.is_available()):
+    if not (cfg.compute['job_launcher']['type'] == 'none' and not torch.distributed.is_available()) and not torch.distributed.is_initialized():
         framework.init_dist_custom(cfg.compute['job_launcher']['dist_params']['backend'], args.local_rank, args.local_world_size )
     rank, world_size = get_dist_info()
     distributed = (world_size != 1)
@@ -98,25 +99,20 @@ def main(args):
             find_unused_parameters=False
             )
     
-    if cfg.runner_type.lower() == 'epoch':
+    if cfg.runner['type'].lower() == 'epoch':
         runner = EpochBasedRunner(
             model=model,
             optimizer=cfg.optimizer,
             loss=cfg.loss,
             metric=cfg.metric,
             lr_scheduler=cfg.lr_scheduler,
-            device=device,
             work_dir=work_dir,
             logger=logger, 
-            grad_clip=cfg.grad_clip,
             distributed=distributed,
-            use_cpu=cfg.compute['use_cpu'],
-            val_freq_epoch=cfg.val_freq_epoch,
-            save_freq=cfg.save_freq_epoch,
+            device=device,
+            compute=cfg.compute,
+            runner=cfg.runner,
             save_optimizer=True,
-            max_epochs=cfg.max_epochs,
-            broadcast_bn_buffer=cfg.compute['broadcast_bn_buffer'],
-            batch_size=cfg.compute['samples_per_gpu']
             )
     else:
         runner = IterBasedRunner(
@@ -125,18 +121,13 @@ def main(args):
             loss=cfg.loss,
             metric=cfg.metric,
             lr_scheduler=cfg.lr_scheduler,
-            device=device,
             work_dir=work_dir,
             logger=logger, 
-            grad_clip=cfg.grad_clip,
             distributed=distributed,
-            use_cpu=cfg.compute['use_cpu'],
-            val_freq_iter=cfg.val_freq_iter,
-            save_freq=cfg.save_freq_iter,
+            device=device,
+            compute=cfg.compute,
+            runner=cfg.runner,
             save_optimizer=True,
-            max_iters=cfg.max_iters,
-            broadcast_bn_buffer=cfg.compute['broadcast_bn_buffer'],
-            batch_size=cfg.compute['samples_per_gpu']
             )
     
     runner.run(train_loader, 

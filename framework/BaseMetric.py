@@ -15,6 +15,8 @@ class BaseMetric():
         '''
         Losses in the loss_dicts should be unweighted.
         '''
+        if len(metrics_dicts) == 0:
+            return dict()
         sum_dict = dict()
         for k in metrics_dicts[0].keys():
             sum_dict[k] = torch.mean(torch.cat([

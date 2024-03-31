@@ -32,4 +32,4 @@ class SampleModel(BaseDetector):
         
     def forward(self, data):
         
-        return [{'pred': d * self.weight} for d in data['input']]
+        return {'pred': data['input'] * self.weight}

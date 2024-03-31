@@ -8,6 +8,7 @@ class BaseSaver(metaclass=ABCMeta):
         self.work_dir = work_dir
         self.directory = saver_settings['directory']
         self.keys = saver_settings['keys']
+        self.dtype = saver_settings.get('dtype')
         self.result_dir = self.directory
     @abstractmethod
     def save(self, inputs, preds):
