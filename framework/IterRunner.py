@@ -113,35 +113,6 @@ class IterBasedRunner(BaseRunner):
             self.log_train(train_message)
         
         self.call_hook('after_train_iter')
-
-        if self._iter % self.save_freq == 0:
-            if self.distributed:
-                dist.barrier()
-                if self._rank != 0:
-                    dist.barrier()
-                else:
-                    self.save_checkpoint(
-                        out_dir = self.work_dir,
-                        save_optimizer = self.save_optimizer,
-                        save_scheduler = True,
-                        filename= 'iter_{iter}-bz{batch_sz}-wz{world_size}.pth'.format(
-                            iter=self._iter,
-                            batch_sz = self.compute['samples_per_gpu'],
-                            world_size=self._world_size
-                        ))
-                    dist.barrier()
-            else:
-                self.save_checkpoint(
-                    out_dir = self.work_dir,
-                    save_optimizer = self.save_optimizer,
-                    save_scheduler = True,
-                    filename= 'iter_{iter}-bz{batch_sz}-wz{world_size}.pth'.format(
-                            iter=self._iter,
-                            batch_sz = self.batch_size,
-                            world_size=self._world_size
-                        ))
-            self.logger.log('Saving to checkpoint...')
-
         self.call_hook('after_train_epoch')
     
         # @torch.no_grad()
@@ -195,6 +166,17 @@ class IterBasedRunner(BaseRunner):
             inputs, targets = data_batch
             self.train_iter(inputs, targets)
             
+            if self._iter % self.save_freq == 0 and self._rank == 0:
+                self.save_checkpoint(
+                        out_dir = self.work_dir,
+                        save_optimizer = self.save_optimizer,
+                        save_scheduler = True,
+                        filename = 'iter_{iter}-bz{batch_sz}-wz{world_size}.pth'.format(
+                            iter=self._iter,
+                            batch_sz = self.compute['samples_per_gpu'],
+                            world_size=self._world_size
+                        ))
+                self.logger.log('Saving to checkpoint...')
             if self._iter % self.val_freq_iter == 0:
                 for loader in data_loader_val:
                     self.val(data_loader=loader)

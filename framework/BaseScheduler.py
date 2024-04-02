@@ -4,6 +4,7 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader, sampler
 from .BaseModules import BaseModule
 from torch.optim.lr_scheduler import _LRScheduler
+from .utils import create_object_from_params
 
 class BaseScheduler(_LRScheduler):
     '''
@@ -20,6 +21,8 @@ class BaseScheduler(_LRScheduler):
                  warmup_epochs=0,
                  warmup_ratio=0.1,
                  warmup_value = None):
+        
+        regular_scheduler = create_object_from_params(regular_scheduler, optimizer=optimizer)
         
         assert optimizer == regular_scheduler.optimizer
         

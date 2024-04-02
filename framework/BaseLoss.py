@@ -59,6 +59,19 @@ class BaseLoss( ABC):
                 ]))
         return sum_loss_dict
     
+    def average_loss_float(self, loss_dicts, device):
+        '''
+        Calculates the total_loss across all processes
+        This should be executed after forward function.
+        Losses in the loss_dicts should be unweighted.
+        '''
+        sum_loss_dict = dict()
+        for k in loss_dicts[0].keys():
+            sum_loss_dict[k] = np.mean([
+                    loss_dicts[j][k] for j in range(len(loss_dicts))
+                ])
+        return sum_loss_dict
+    
     # def forward(self, pred, target, device):
     #     self.loss_dict = self.forward_loss(pred, target)
     #     self.weighted_sum_loss = self.calc_weighted_loss(self.loss_dict, self.loss_weight, device)

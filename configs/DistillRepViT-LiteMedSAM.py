@@ -11,8 +11,9 @@ from torchvision import transforms
 import dataloaders
 from functools import partial
 import savers
+from torch.distributed.optim import ZeroRedundancyOptimizer
 
-batch_size = 8
+batch_size = 5
 encoder_embed_dim=768
 encoder_depth=12
 encoder_num_heads=12
@@ -59,26 +60,31 @@ model = models.TeacherStudentModel(
 )
 
 optimizer = dict(
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3*(batch_size*3/256), weight_decay=0.025), # RepViT default settings
-    # grad_clip = dict(max_norm=5, norm_type=2)
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3*(batch_size*3/256), weight_decay=0.025), # RepViT default settings
+    optimizer = dict(type = torch.optim.AdamW, # ZeroRedundancyOptimizer,
+                    #  optimizer_class = torch.optim.AdamW, 
+                     lr=1e-3*(batch_size*3/256), 
+                     weight_decay=0.025),
+    grad_clip = dict(max_norm=0.2, norm_type=2)
 )
-lr_scheduler = BaseScheduler(
-    regular_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer['optimizer'],
+
+lr_scheduler = dict(
+    type = BaseScheduler,
+    regular_scheduler = dict(
+            type=torch.optim.lr_scheduler.CosineAnnealingLR,
             T_max=3,
-            eta_min=1e-6,
+            eta_min=3e-5,
             verbose=True
         ),
-    optimizer = optimizer['optimizer'],
     warmup_by_epoch = True,
     warmup_epochs = 1,
     warmup = 'constant_value',
     warmup_iters = 10000,
-    warmup_value = 1e-6
-)
+    warmup_value = 1e-4
+    )
 
 compute = dict(
-    gpu_ids = [0,1,2],
+    gpu_ids = [0,1,2,3],
     use_cpu = False,
     use_amp = True,
     mp_start_method = 'fork',
@@ -104,26 +110,25 @@ runner= dict(
     max_epochs = 3, #300
     max_iters = 10000,
     val_freq_epoch = 1,
-    save_freq_epoch = 1,
-    val_freq_iter = 100,
-    save_freq_iter = 1,
+    val_freq_iter = 10000,
+    save_freq_iter = 15000,
     log_freq=5,
     resume_train = False,
     resume_checkpoint = None,
 )
 loss = losses.DistillationLoss(
-    distillation_type = 'hard',
+    distillation_type = 'mse',
     tau = 1.0,
     precomputed_teacher = False,
     loss_weight = {
         'loss_distillation': 1.0,
         }
     )
-metric = metrics.NoMetric()
+metric = metrics.DistillationMetric(precomputed_teacher=False)
 custom_hooks = []
 seed = 0
 
-data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
+data_root = '/data/qasim/MedSAM/split_npzs_3chnl/'
 pipeline_type = pipelines.CVPRMedSAMDistillationPipeline(
     student_image_shape = 1024,
     teacher_image_shape = 256,

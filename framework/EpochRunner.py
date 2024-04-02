@@ -56,7 +56,7 @@ class EpochBasedRunner(BaseRunner):
                  distributed=distributed,
                  use_cpu=compute['use_cpu'],
                  broadcast_bn_buffer=compute['broadcast_bn_buffer'],
-                 save_freq=runner['save_freq_epoch'],
+                 save_freq=runner['save_freq_iter'],
                  save_optimizer=save_optimizer,
                  max_iters=None,
                  max_epochs=runner['max_epochs'],
@@ -134,7 +134,18 @@ class EpochBasedRunner(BaseRunner):
                         progress = progress
                     )
                 self.log_train(train_message)
-            
+                
+            if i % self.save_freq == 0 and self._rank == 0:
+                self.save_checkpoint(
+                            out_dir = self.work_dir,
+                            save_optimizer = self.save_optimizer,
+                            save_scheduler = True,
+                            filename = 'epoch_{epoch}_{iter}.pth'.format(
+                                epoch=self._epoch,
+                                iter=i
+                            ))
+                self.logger.info('Saving to checkpoint...')
+                
             self.call_hook('after_train_iter')
             del data_batch, inputs, preds, batch_size
             self._iter += 1
@@ -146,7 +157,7 @@ class EpochBasedRunner(BaseRunner):
     # @torch.no_grad()
     def val(self, data_loader, epoch):
         super().val(epoch, self._max_epochs, data_loader)
-
+    
     def run(self,
             data_loader_train: DataLoader,
             data_loader_val: DataLoader,
@@ -180,29 +191,6 @@ class EpochBasedRunner(BaseRunner):
                 loader.sampler.set_epoch(self._epoch)
             
             self._epoch += 1
-            if self._epoch % self.save_freq == 0:
-                if self.distributed:
-                    dist.barrier()
-                    if self._rank != 0:
-                        dist.barrier()
-                    else:
-                        self.save_checkpoint(
-                            out_dir = self.work_dir,
-                            save_optimizer = self.save_optimizer,
-                            save_scheduler = True,
-                            filename = 'epoch_{epoch}.pth'.format(
-                                epoch=self._epoch
-                            ))
-                        dist.barrier()
-                else:
-                    self.save_checkpoint(
-                        out_dir = self.work_dir,
-                        save_optimizer = self.save_optimizer,
-                        save_scheduler = True,
-                        filename = 'epoch_{epoch}.pth'.format(
-                                epoch=self._epoch
-                            ))
-                self.logger.info('Saving to checkpoint...')
             if self._epoch % self.val_freq_epoch == 0:
                 for loader in data_loader_val:
                     self.val(loader, self._epoch)

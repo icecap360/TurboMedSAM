@@ -15,7 +15,7 @@ import pickle
 
 from .Distributed import get_dist_info
 import os
-
+from copy import deepcopy
 
 def dict_to_device(data, device):
     new_data = {}
@@ -247,4 +247,8 @@ class CustomDict():
 def len_dict(data):
     for v in data.values():
         return len(v)
-    
+
+def create_object_from_params(params_cfg, **kwargs):
+    params_cfg = deepcopy(params_cfg)
+    type_object = params_cfg.pop('type')
+    return type_object(**params_cfg, **kwargs)

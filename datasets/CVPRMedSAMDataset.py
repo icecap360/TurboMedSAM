@@ -128,7 +128,7 @@ class CVPRMedSAMEncoderDataset(CVPRMedSAMDataset):
         """
         super(CVPRMedSAMDataset, self).__init__(split_type, pipeline, input_transform, target_transform)
         self.root_dir = root_dir
-        self.npz_dir = self.root_dir
+        self.npz_dir = os.path.join(self.root_dir, self.split_type)
         self.classes = os.listdir(self.npz_dir)
         self.subset_classes = subset_classes
         if self.subset_classes is None:
@@ -262,7 +262,6 @@ class CVPRMedSAMDatasetFFCVWrite(Dataset):
         self.root_dir = root_dir
         self.npz_dir = os.path.join(self.root_dir, self.split_type)
         self.classes = os.listdir(self.npz_dir)
-
         self.npz_paths = glob.glob(os.path.join(self.npz_dir, "**/*.npz"), recursive=True)
         
     def __len__(self):

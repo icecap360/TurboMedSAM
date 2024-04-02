@@ -185,7 +185,7 @@ class BaseRunner(metaclass=ABCMeta):
     @abstractmethod
     def run(self, data_loaders, **kwargs):
         pass
-
+    
     def save_checkpoint(self,
                         out_dir: str,
                         filename: str,
@@ -209,6 +209,7 @@ class BaseRunner(metaclass=ABCMeta):
                 "latest.pth" to point to the latest checkpoint.
                 Defaults to True.
         """
+        
         if meta is None:
             meta = {}
         elif not isinstance(meta, dict):
@@ -235,6 +236,8 @@ class BaseRunner(metaclass=ABCMeta):
         }
         
         if save_optimizer:
+            if isinstance(self.optimizer, torch.distributed.optim.ZeroRedundancyOptimizer) :
+                self.optimizer.consolidate_state_dict()
             checkpoint['optimizer'] = self.optimizer.state_dict()
         if save_scheduler:
             checkpoint['lr_scheduler'] = self.lr_scheduler.state_dict()
@@ -415,11 +418,14 @@ class BaseRunner(metaclass=ABCMeta):
                     dist.broadcast(module.running_var, 0)
                     dist.broadcast(module.running_mean, 0)
 
+
         model.eval()
         results = []
         loss_dicts = []
         metrics_dicts = []
         time.sleep(2)  # This line can prevent deadlock problem in some multi-gpu cases
+        from torch.utils.viz._cycles import warn_tensor_cycles
+        warn_tensor_cycles()
         for data in tqdm(data_loader, position=self._rank, total=len(data_loader)):
             with torch.no_grad():
                 inputs, targets = data[0], data[1]
@@ -428,13 +434,12 @@ class BaseRunner(metaclass=ABCMeta):
                 preds = model(inputs)
                 batch_loss_dict = self.loss.forward_loss(preds, targets)
                 batch_metrics_dict = self.metrics.get_metrics(preds, targets, self.device)
-
-            loss_dicts.append(batch_loss_dict)
-            metrics_dicts.append(batch_metrics_dict)
-            del batch_loss_dict, batch_metrics_dict
+                loss_dicts.append({k:v.item() for k,v in batch_loss_dict.items()})
+                metrics_dicts.append({k:v.item() for k,v in batch_metrics_dict.items()})
+                del batch_loss_dict, batch_metrics_dict, inputs, preds
         
-        avg_loss_dict = self.loss.average_loss(loss_dicts, self.device)
-        avg_metrics_dict = self.metrics.average_metrics(metrics_dicts, self.device)  
+        avg_loss_dict = self.loss.average_loss_float(loss_dicts, self.device)
+        avg_metrics_dict = self.metrics.average_metrics_float(metrics_dicts, self.device)  
         
         if self.distributed:
             # collect results from all ranks
@@ -448,7 +453,7 @@ class BaseRunner(metaclass=ABCMeta):
                 losses_from_ranks = collect_results_cpu(avg_loss_dict, self._world_size, tmpdir)
                 metrics_from_ranks = collect_results_cpu(avg_metrics_dict, self._world_size, tmpdir)
             if self._rank == 0:
-                return self.loss.average_loss(losses_from_ranks, self.device), self.metrics.average_metrics(metrics_from_ranks, self.device)  
+                return self.loss.average_loss_float(losses_from_ranks, self.device), self.metrics.average_metrics_float(metrics_from_ranks, self.device)  
             else:
                 return None, None
         else:

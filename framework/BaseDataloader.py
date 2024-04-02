@@ -14,6 +14,7 @@ import warnings
 import random
 from copy import deepcopy
 from torchvision import transforms
+from .utils import create_object_from_params
 
 def create_dataloader(data_settings, compute_settings, seed, is_distributed, split_type):
     
@@ -38,6 +39,13 @@ def create_dataloader(data_settings, compute_settings, seed, is_distributed, spl
         batch_size = compute_settings["samples_per_gpu"]
         num_workers = compute_settings["workers_per_gpu"]
     
+    return create_object_from_params(data_settings[split_type]['dataloader_creator'], 
+                                    data_settings = data_settings,
+                                    compute_settings=compute_settings,
+                                    seed = seed,
+                                    is_distributed = is_distributed,
+                                    split_type = split_type,
+                                    batch_size = batch_size)
     dataloader_settings = data_settings[split_type]['dataloader_creator']
     dataloader_creator = dataloader_settings.pop('type')
     return dataloader_creator(data_settings = data_settings,
@@ -76,19 +84,25 @@ def basic_dataloader_creator(data_settings, compute_settings, seed, is_distribut
         rank=rank,
         seed=seed) if seed is not None else None
     
-    dataset_settings = deepcopy(data_settings[split_type]['dataset'])
-    dataset_type = dataset_settings.pop("type")
-    dataset = dataset_type( split_type = split_type, 
-                        **dataset_settings
-            )
-    
-    sampler_settings = deepcopy(data_settings[split_type]["sampler"])
-    sampler_type = sampler_settings.pop('type')
-    sampler = sampler_type(dataset, 
-                        num_replicas=world_size, 
-                        rank=rank,
-                        seed=seed,
-                        **sampler_settings)
+    dataset = create_object_from_params(data_settings[split_type]['dataset'], 
+                                        split_type = split_type)
+    # dataset_settings = deepcopy(data_settings[split_type]['dataset'])
+    # dataset_type = dataset_settings.pop("type")
+    # dataset = dataset_type( split_type = split_type, 
+    #                     **dataset_settings
+    #         )
+    sampler = create_object_from_params(data_settings[split_type]["sampler"], 
+                                dataset=dataset, 
+                                num_replicas=world_size, 
+                                rank=rank,
+                                seed=seed)
+    # sampler_settings = deepcopy(data_settings[split_type]["sampler"])
+    # sampler_type = sampler_settings.pop('type')
+    # sampler = sampler_type(dataset, 
+    #                     num_replicas=world_size, 
+    #                     rank=rank,
+    #                     seed=seed,
+    #                     **sampler_settings)
 
     return BaseDataLoader(dataset, 
                         batch_size=batch_size,

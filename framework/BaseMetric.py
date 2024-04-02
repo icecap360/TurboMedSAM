@@ -23,3 +23,15 @@ class BaseMetric():
                     metrics_dicts[j][k].to(device).reshape(1) for j in range(len(metrics_dicts))
                 ]))
         return sum_dict
+    def average_metrics_float(self, metrics_dicts, device)-> dict:
+        '''
+        Losses in the loss_dicts should be unweighted.
+        '''
+        if len(metrics_dicts) == 0:
+            return dict()
+        sum_dict = dict()
+        for k in metrics_dicts[0].keys():
+            sum_dict[k] = np.mean([
+                    metrics_dicts[j][k] for j in range(len(metrics_dicts))
+                ])
+        return sum_dict

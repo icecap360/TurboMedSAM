@@ -3,10 +3,10 @@ import argparse
 import copy
 import os
 from torch import distributed as dist
-from framework import import_module, setup_multi_processes, get_dist_info, logger, read_cfg_str, get_device, init_random_seed, set_random_seed, create_dataloader, set_visible_devices, EpochBasedRunner, IterBasedRunner
-
+from framework import import_module, setup_multi_processes, get_dist_info, logger, read_cfg_str, get_device, init_random_seed, set_random_seed, create_dataloader, set_visible_devices, EpochBasedRunner, IterBasedRunner, create_optimizer, create_object_from_params
 import framework
-
+import traceback
+import sys 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
@@ -30,7 +30,6 @@ def parse_args():
 
 
 def main(args):
-    torch.autograd.set_detect_anomaly(True)
     abs_config_path = os.path.join("configs", args.config)
     cfg = import_module(os.path.basename(args.config), 
                         abs_config_path)
@@ -98,6 +97,9 @@ def main(args):
             broadcast_buffers=False,
             find_unused_parameters=False
             )
+        
+    cfg.optimizer['optimizer'] = create_object_from_params(cfg.optimizer['optimizer'], params=model.parameters())
+    cfg.lr_scheduler = create_object_from_params(cfg.lr_scheduler, optimizer=cfg.optimizer['optimizer'])
     
     if cfg.runner['type'].lower() == 'epoch':
         runner = EpochBasedRunner(
@@ -117,7 +119,7 @@ def main(args):
     else:
         runner = IterBasedRunner(
             model=model,
-            optimizer=cfg.optimizer,
+            optimizer=create_optimizer(cfg.optimizer),
             loss=cfg.loss,
             metric=cfg.metric,
             lr_scheduler=cfg.lr_scheduler,
@@ -130,8 +132,16 @@ def main(args):
             save_optimizer=True,
             )
     
-    runner.run(train_loader, 
+    try:
+        torch.autograd.set_detect_anomaly(True)
+        runner.run(train_loader, 
                val_loader)
+    except Exception as e:
+        print(traceback.format_exc())
+        if runner._rank == 0:
+            runner.save_checkpoint(runner.work_dir, 'exception.pth')
+
+        
     
 
 
