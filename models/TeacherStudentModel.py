@@ -46,7 +46,7 @@ class TeacherStudentModel(BaseModule):
             res['student_'+key] = student_pred[key]
         return res
     
-    def state_dict(self, destination=None, prefix=None, keep_vars=None):
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
         return self.student.state_dict(destination, prefix, keep_vars)
     
     def init_weights(self):

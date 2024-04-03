@@ -4,7 +4,7 @@ from timm.models.layers import SqueezeExcite
 import torch
 from framework import BaseModule
 
-__all__ = ['repvit_model_m1_1', 'repvit_model_m2_3', 'repvit_model_m0_9', 'repvit_model_m1_5']
+__all__ = ['repvit_model_m1_1', 'repvit_model_m2_3', 'repvit_model_m0_9', 'repvit_model_m1_5', 'repvit_model_m0_6']
 
 def _make_divisible(v, divisor, min_value=None):
     """
@@ -150,7 +150,7 @@ class RepViTBlock(nn.Module):
 
         if stride == 2:
             self.token_mixer = nn.Sequential(
-                Conv2d_BN(inp, inp, kernel_size, stride if inp != 320 else 1, (kernel_size - 1) // 2, groups=inp),
+                Conv2d_BN(inp, inp, kernel_size, stride if not inp in [320, 256]  else 1, (kernel_size - 1) // 2, groups=inp),
                 SqueezeExcite(inp, 0.25) if use_se else nn.Identity(),
                 Conv2d_BN(inp, oup, ks=1, stride=1, pad=0)
             )
@@ -176,7 +176,7 @@ class RepViTBlock(nn.Module):
                         Conv2d_BN(hidden_dim, oup, 1, 1, 0, bn_weight_init=0),
                     ))
             else:
-                raise Exception('This part of code leads to nans being produced')
+                # raise Exception('This part of code leads to nans being produced')
                 self.token_mixer = nn.Sequential(
                     Conv2d_BN(inp, inp, kernel_size, stride, (kernel_size - 1) // 2, groups=inp),
                     SqueezeExcite(inp, 0.25) if use_se else nn.Identity(),
@@ -411,6 +411,33 @@ def repvit_model_m0_9(pretrained=False, num_classes = 1000, distillation=False, 
     return RepViTModel(cfgs_m0_9, num_classes=num_classes, distillation=distillation, init_cfg=init_cfg)
 
 
+def repvit_model_m0_6(pretrained=False, num_classes = 1000, distillation=False, init_cfg=None):
+    """
+    Constructs a MobileNetV3-Large model
+    """
+    cfgs_m0_6 = [
+        [3,   2,  40, 1, 0, 1],
+        [3,   2,  40, 0, 0, 1],
+        [3,   2,  80, 0, 0, 2],
+        [3,   2,  80, 1, 0, 1],
+        [3,   2,  80, 0, 0, 1],
+        [3,   2,  160, 0, 1, 2],
+        [3,   2, 160, 1, 1, 1],
+        [3,   2, 160, 0, 1, 1],
+        [3,   2, 160, 1, 1, 1],
+        [3,   2, 160, 0, 1, 1],
+        [3,   2, 160, 1, 1, 1],
+        [3,   2, 160, 0, 1, 1],
+        [3,   2, 160, 1, 1, 1],
+        [3,   2, 160, 0, 1, 1],
+        [3,   2, 160, 0, 1, 1],
+        [3,   2, 320, 0, 1, 2],
+        [3,   2, 320, 1, 1, 1],
+    ]
+    return RepViTModel(cfgs_m0_6, num_classes=num_classes, distillation=distillation, init_cfg=init_cfg)
+
+
+
 def repvit_model_m2_3(pretrained=False, num_classes = 1000, distillation=False, init_cfg=None):
     """
     Constructs a MobileNetV3-Large model
@@ -487,7 +514,7 @@ def repvit_model_m1_1(pretrained=False, num_classes = 1000, distillation=False, 
         [3,   2,  64, 1, 0, 1],
         [3,   2,  64, 0, 0, 1],
         [3,   2,  64, 0, 0, 1],
-        [3,   2,  128, 0, 0, 1], # [3,   2,  128, 0, 0, 2],
+        [3,   2,  128, 0, 0, 2],
         [3,   2,  128, 1, 0, 1],
         [3,   2,  128, 0, 0, 1],
         [3,   2,  128, 0, 0, 1],
@@ -505,7 +532,7 @@ def repvit_model_m1_1(pretrained=False, num_classes = 1000, distillation=False, 
         [3,   2,  256, 1, 1, 1],
         [3,   2,  256, 0, 1, 1],
         [3,   2,  256, 0, 1, 1],
-        [3,   2,  512, 0, 1, 2],
+        [3,   2,  512, 0, 1, 1], # [3,   2,  512, 0, 1, 2],
         [3,   2,  512, 1, 1, 1],
         [3,   2,  512, 0, 1, 1]
     ]
@@ -529,7 +556,7 @@ def repvit_model_m1_5(pretrained=False, num_classes = 1000, distillation=False, 
         [3,   2,  128, 1, 0, 1],
         [3,   2,  128, 0, 0, 1],
         [3,   2,  128, 0, 0, 1],
-        [3,   2,  256, 0, 1, 2],
+        [3,   2,  256, 0, 1, 2], # [3,   2,  256, 0, 1, 1],#
         [3,   2,  256, 1, 1, 1],
         [3,   2,  256, 0, 1, 1],
         [3,   2,  256, 1, 1, 1],
@@ -555,7 +582,7 @@ def repvit_model_m1_5(pretrained=False, num_classes = 1000, distillation=False, 
         [3,   2, 256, 1, 1, 1],
         [3,   2, 256, 0, 1, 1],
         [3,   2, 256, 0, 1, 1],
-        [3,   2, 512, 0, 1, 1], # [3,   2, 512, 0, 1, 2],
+        [3,   2, 512, 0, 1, 2],
         [3,   2, 512, 1, 1, 1],
         [3,   2, 512, 0, 1, 1],
         [3,   2, 512, 1, 1, 1],

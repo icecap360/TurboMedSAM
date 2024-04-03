@@ -57,7 +57,7 @@ class BaseScheduler(_LRScheduler):
         # for group in self.optimizer.param_groups:
         #         group.setdefault('initial_lr', group['lr'])
     
-    def state_dict(self, destination=None, prefix=None, keep_vars=None):
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
         """Returns the state of the scheduler as a :class:`dict`.
 
         It contains an entry for every variable in self.__dict__ which

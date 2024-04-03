@@ -12,7 +12,7 @@ from functools import partial
 import savers
 from torch.distributed.optim import ZeroRedundancyOptimizer
 
-batch_size = 5
+batch_size = 4
 encoder_embed_dim=768
 encoder_depth=12
 encoder_num_heads=12
@@ -60,9 +60,10 @@ model = models.TeacherStudentModel(
 
 optimizer = dict(
     # optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3*(batch_size*3/256), weight_decay=0.025), # RepViT default settings
-    optimizer = dict(type = torch.optim.AdamW, # ZeroRedundancyOptimizer,
-                    #  optimizer_class = torch.optim.AdamW, 
+    optimizer = dict(type = ZeroRedundancyOptimizer,
+                     optimizer_class = torch.optim.AdamW, 
                      lr=1e-3*(batch_size*3/256), 
+                     eps=1e-7,
                      weight_decay=0.025),
     grad_clip = dict(max_norm=0.2, norm_type=2)
 )
@@ -75,11 +76,11 @@ lr_scheduler = dict(
             eta_min=3e-5,
             verbose=True
         ),
-    warmup_by_epoch = True,
+    warmup_by_epoch = False,
     warmup_epochs = 1,
     warmup = 'constant_value',
     warmup_iters = 10000,
-    warmup_value = 1e-4
+    warmup_value = 5e-5
     )
 
 compute = dict(
@@ -110,7 +111,7 @@ runner= dict(
     max_iters = 10000,
     val_freq_epoch = 1,
     val_freq_iter = 10000,
-    save_freq_iter = 15000,
+    save_freq_iter = 10000,
     log_freq=5,
     resume_train = False,
     resume_checkpoint = None,
