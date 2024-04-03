@@ -16,7 +16,7 @@ from copy import deepcopy
 from torchvision import transforms
 from .utils import create_object_from_params
 
-def create_dataloader(data_settings, compute_settings, seed, is_distributed, split_type):
+def create_dataloader(data_settings, compute_settings, seed, is_distributed, split_type, start_idx=0):
     
     if not (torch.__version__ != 'parrots'
             and digit_version(torch.__version__) >= digit_version('1.7.0')):
@@ -45,7 +45,8 @@ def create_dataloader(data_settings, compute_settings, seed, is_distributed, spl
                                     seed = seed,
                                     is_distributed = is_distributed,
                                     split_type = split_type,
-                                    batch_size = batch_size)
+                                    batch_size = batch_size,
+                                    start_idx = start_idx)
     dataloader_settings = data_settings[split_type]['dataloader_creator']
     dataloader_creator = dataloader_settings.pop('type')
     return dataloader_creator(data_settings = data_settings,
@@ -73,7 +74,7 @@ class BaseDataLoader(torch.utils.data.DataLoader):
     def get_name(self):
         return self.name
     
-def basic_dataloader_creator(data_settings, compute_settings, seed, is_distributed, split_type, batch_size, drop_last=False,name='Basic'):
+def basic_dataloader_creator(data_settings, compute_settings, seed, is_distributed, split_type, batch_size, start_idx=0, drop_last=False,name='Basic'):
     if is_distributed:
         rank, world_size = get_dist_info()
     else:
@@ -91,11 +92,14 @@ def basic_dataloader_creator(data_settings, compute_settings, seed, is_distribut
     # dataset = dataset_type( split_type = split_type, 
     #                     **dataset_settings
     #         )
+
     sampler = create_object_from_params(data_settings[split_type]["sampler"], 
-                                dataset=dataset, 
-                                num_replicas=world_size, 
-                                rank=rank,
-                                seed=seed)
+                            dataset=dataset, 
+                            num_replicas=world_size, 
+                            rank=rank,
+                            seed=seed,
+                            start_idx = start_idx)
+    
     # sampler_settings = deepcopy(data_settings[split_type]["sampler"])
     # sampler_type = sampler_settings.pop('type')
     # sampler = sampler_type(dataset, 
@@ -134,7 +138,7 @@ class ListDataLoader():
         else:
             raise StopIteration
 
-def basic_val_dataloader_creator(data_settings, compute_settings, seed, is_distributed, split_type, batch_size, name='Basic', drop_last=False):
+def basic_val_dataloader_creator(data_settings, compute_settings, seed, is_distributed, split_type, batch_size, name='Basic', drop_last=False, start_idx=0):
         loaders = [basic_dataloader_creator(data_settings, compute_settings, seed, is_distributed, split_type, batch_size, name=name, drop_last=drop_last )]
         return ListDataLoader(loaders)
 

@@ -222,7 +222,9 @@ class BaseRunner(metaclass=ABCMeta):
             # meta.update(epoch=self.epoch + 1, iter=self.iter) otherwise
             # there will be problems with resumed checkpoints.
             # More details in https://github.com/open-mmlab/mmcv/pull/1108
-        meta.update(epoch=self._epoch, iter=self._iter, logger=self.logger.path)
+        meta.update(epoch=self._epoch, iter=self._iter, 
+                    logger=self.logger.path, batch_size=self.batch_size,
+                    samples_per_gpup=self.samples_per_gpu)
 
         filepath = os.path.join(out_dir, filename)
         
@@ -236,8 +238,6 @@ class BaseRunner(metaclass=ABCMeta):
         }
         
         if save_optimizer:
-            if isinstance(self.optimizer, torch.distributed.optim.ZeroRedundancyOptimizer) :
-                self.optimizer.consolidate_state_dict()
             checkpoint['optimizer'] = self.optimizer.state_dict()
         if save_scheduler:
             checkpoint['lr_scheduler'] = self.lr_scheduler.state_dict()
@@ -420,12 +420,9 @@ class BaseRunner(metaclass=ABCMeta):
 
 
         model.eval()
-        results = []
         loss_dicts = []
         metrics_dicts = []
         time.sleep(2)  # This line can prevent deadlock problem in some multi-gpu cases
-        from torch.utils.viz._cycles import warn_tensor_cycles
-        warn_tensor_cycles()
         for data in tqdm(data_loader, position=self._rank, total=len(data_loader)):
             with torch.no_grad():
                 inputs, targets = data[0], data[1]

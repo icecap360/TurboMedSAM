@@ -81,13 +81,6 @@ def main(args):
     model = cfg.model
     model.init_weights()
     
-    train_loader = create_dataloader(cfg.data,
-                                            cfg.compute, 
-                                            cfg.seed, distributed, "train")
-    val_loader = create_dataloader(cfg.data,
-                                          cfg.compute, 
-                                          cfg.seed, distributed,  "val")
-    
     model = model.to(device)
     if distributed:
         # find_unused_parameters = cfg.get('find_unused_parameters', False)
@@ -132,10 +125,25 @@ def main(args):
             save_optimizer=True,
             )
     
+    train_loader = create_dataloader(cfg.data,
+                                        cfg.compute, 
+                                        cfg.seed, distributed, "train")
+    val_loader = create_dataloader(cfg.data,
+                                    cfg.compute, 
+                                    cfg.seed, distributed,  "val")
+    remaining_train_loader = None
+    if runner.resume_train:
+        remaining_train_loader = create_dataloader(cfg.data, 
+                                               cfg.compute,
+                                               cfg.seed, 
+                                               distributed,
+                                               "train", 
+                                               start_idx=(runner._iter%len(train_loader))*runner.batch_size)
     try:
         torch.autograd.set_detect_anomaly(True)
         runner.run(train_loader, 
-               val_loader)
+               val_loader,
+               remaining_train_loader)
     except Exception as e:
         print(traceback.format_exc())
         if runner._rank == 0:

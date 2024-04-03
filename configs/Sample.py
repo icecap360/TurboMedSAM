@@ -1,9 +1,8 @@
 import torch
-from torch.utils.data import DistributedSampler
 import models
 import datasets
 import os 
-from framework import basic_dataloader_creator, basic_val_dataloader_creator, BaseScheduler
+from framework import basic_dataloader_creator, basic_val_dataloader_creator, BaseScheduler, DistributedSampler
 from torchvision import transforms
 from metrics import SampleMetric
 from losses import SampleLoss
@@ -54,7 +53,6 @@ runner = dict(
     max_iters = 10000,
     val_freq_epoch = 1,
     val_freq_iter = 1000,
-    save_freq_epoch = 1,
     save_freq_iter = 1000,
     log_freq=5,
     resume_train = True,

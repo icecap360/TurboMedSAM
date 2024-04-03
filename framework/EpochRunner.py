@@ -25,6 +25,7 @@ from copy import deepcopy
 import tempfile
 from .BaseRunner import BaseRunner
 from .Profiling import AverageMeter, ProgressMeter
+from torch.distributed.optim import ZeroRedundancyOptimizer
 
 class EpochBasedRunner(BaseRunner):
     """Epoch-based Runner.
@@ -83,9 +84,8 @@ class EpochBasedRunner(BaseRunner):
         end = time.time()
 
         samples_processed = 0
-        
+
         for i, data_batch in enumerate(data_loader):
-            
             inputs, targets = data_batch[0], data_batch[1]
             batch_size = len_dict(inputs)
             targets = dict_to_device(targets, self.device)
@@ -100,8 +100,9 @@ class EpochBasedRunner(BaseRunner):
                 preds = self.model(inputs)    
                 loss_dict = self.loss.forward_loss(preds, targets)
                 weighted_sum_loss = self.loss.calc_weighted_loss(loss_dict, self.loss.loss_weight, requires_grad=True, device=self.device)
-            
-            self.scaler.scale(weighted_sum_loss).backward()
+
+            scaled_loss = self.scaler.scale(weighted_sum_loss)
+            scaled_loss.backward(retain_graph=True)
 
             if self.grad_clip != None:
                 self.scaler.unscale_(self.optimizer)
@@ -135,16 +136,19 @@ class EpochBasedRunner(BaseRunner):
                     )
                 self.log_train(train_message)
                 
-            if i % self.save_freq == 0 and self._rank == 0:
-                self.save_checkpoint(
-                            out_dir = self.work_dir,
-                            save_optimizer = self.save_optimizer,
-                            save_scheduler = True,
-                            filename = 'epoch_{epoch}_{iter}.pth'.format(
-                                epoch=self._epoch,
-                                iter=i
-                            ))
-                self.logger.info('Saving to checkpoint...')
+            if i % self.save_freq == 0:
+                if isinstance(self.optimizer, ZeroRedundancyOptimizer) :
+                    self.optimizer.consolidate_state_dict(0)
+                if self._rank ==0:
+                    self.logger.info('Saving to checkpoint...')
+                    self.save_checkpoint(
+                                out_dir = self.work_dir,
+                                save_optimizer = self.save_optimizer,
+                                save_scheduler = True,
+                                filename = 'epoch_{epoch}_{iter}.pth'.format(
+                                    epoch=self._epoch,
+                                    iter=i
+                                ))
                 
             self.call_hook('after_train_iter')
             del data_batch, inputs, preds, batch_size
@@ -161,6 +165,7 @@ class EpochBasedRunner(BaseRunner):
     def run(self,
             data_loader_train: DataLoader,
             data_loader_val: DataLoader,
+            remaining_train_loader: DataLoader = None,
             ) -> None:
         """Start running.
 
@@ -185,8 +190,16 @@ class EpochBasedRunner(BaseRunner):
         self.logger.reset_start_time_eta()
         
         while self._epoch < self._max_epochs:
-            data_loader_train.sampler.set_epoch(self._epoch)
-            self.train_epoch(data_loader=data_loader_train)
+
+            if not (remaining_train_loader==None):
+                remaining_train_loader.sampler.set_epoch(self._epoch)
+                self.train_epoch(data_loader=remaining_train_loader)
+                del remaining_train_loader
+                remaining_train_loader = None
+            else:
+                data_loader_train.sampler.set_epoch(self._epoch)
+                self.train_epoch(data_loader=data_loader_train)
+
             for loader in data_loader_val:
                 loader.sampler.set_epoch(self._epoch)
             
@@ -266,3 +279,21 @@ class EpochBasedRunner(BaseRunner):
     #     tmpdir.cleanup()
 
     #     return results
+        
+def hook_fn(m, i, o):
+    print(m)
+    print("------------Input Grad------------")
+
+    for grad in i:
+        try:
+            print(grad.shape, torch.max(grad), torch.min(grad), torch.max(torch.abs(grad)), torch.std(grad), torch.mean(grad))
+        except AttributeError: 
+            print ("None found for Gradient")
+
+    print("------------Output Grad------------")
+    for grad in o:  
+        try:
+            print(grad.shape, torch.max(grad), torch.min(grad), torch.max(torch.abs(grad)), torch.std(grad), torch.mean(grad))
+        except AttributeError: 
+            print ("None found for Gradient")
+    print("\n")

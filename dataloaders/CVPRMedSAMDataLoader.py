@@ -15,7 +15,7 @@ from framework import get_dist_info, worker_init_fn, digit_version, logger, List
 from datasets import CVPRMedSAMDataset, get_MedSAM_classes
 from copy import deepcopy
 
-def CVPRMedSAM_val_dataloader_creator(data_settings, compute_settings, seed, is_distributed,   split_type, batch_size, drop_last=False):
+def CVPRMedSAM_val_dataloader_creator(data_settings, compute_settings, seed, is_distributed,   split_type, batch_size, drop_last=False, start_idx=0):
     if is_distributed:
         rank, world_size = get_dist_info()
     else:

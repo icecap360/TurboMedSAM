@@ -176,6 +176,7 @@ class RepViTBlock(nn.Module):
                         Conv2d_BN(hidden_dim, oup, 1, 1, 0, bn_weight_init=0),
                     ))
             else:
+                raise Exception('This part of code leads to nans being produced')
                 self.token_mixer = nn.Sequential(
                     Conv2d_BN(inp, inp, kernel_size, stride, (kernel_size - 1) // 2, groups=inp),
                     SqueezeExcite(inp, 0.25) if use_se else nn.Identity(),
@@ -222,7 +223,7 @@ class BN_Linear(torch.nn.Sequential):
         m = torch.nn.Linear(w.size(1), w.size(0), device=l.weight.device)
         m.weight.data.copy_(w)
         m.bias.data.copy_(b)
-        return m
+        return m    
 
 class Classfier(nn.Module):
     def __init__(self, dim, num_classes, distillation=True):

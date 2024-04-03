@@ -1,9 +1,8 @@
 import torch
 import models
 import datasets
-from torch.utils.data import DistributedSampler
 import os 
-from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_creator
+from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_creator, DistributedSampler
 import losses
 import metrics
 import pipelines
@@ -61,10 +60,10 @@ lr_scheduler = BaseScheduler(
             verbose=True
         ),
     optimizer = optimizer,
-    warmup_by_epoch = True,
+    warmup_by_epoch = False,
     warmup_epochs = 5,
     warmup = 'constant_value',
-    warmup_iters = 10000,
+    warmup_iters = 20,
     warmup_value = 1e-6
 )
 
@@ -91,13 +90,12 @@ compute = dict(
 work_dir = 'work_dir'
 exp_name = os.path.basename(__file__)[:-3]
 runner = dict(
-    type= 'epoch',
+    type= 'iter',
     max_epochs = 1, #300
     max_iters = 10000,
     val_freq_epoch = 1,
     val_freq_iter = 1000,
-    save_freq_epoch = 1,
-    save_freq_iter = 1000,
+    save_freq_iter = 10,
     log_freq=5,
     resume_train = True,
     resume_checkpoint = None,)

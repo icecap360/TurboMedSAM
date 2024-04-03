@@ -1,9 +1,8 @@
 import torch
 import models
 import datasets
-from torch.utils.data import DistributedSampler
 import os 
-from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_creator
+from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_creator, DistributedSampler
 import losses
 import metrics
 import pipelines
@@ -11,11 +10,12 @@ from torchvision import transforms
 import dataloaders
 from functools import partial
 import savers
+from torch.distributed.optim import ZeroRedundancyOptimizer
 
-batch_size = 24
+batch_size = 9
 image_size = 1024
 
-model = models.repvit_model_m1_5(
+model = torch.compile(models.repvit_model_m2_3(
             init_cfg=None, #{
             #     "type": "pretrained",
             #     "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/repvit_sam.pt",
@@ -23,7 +23,33 @@ model = models.repvit_model_m1_5(
             # },
             distillation=True,
             num_classes=0
-        )
+        ))
+
+optimizer = dict(
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3*(batch_size*3/256), weight_decay=0.025), # RepViT default settings
+    optimizer = dict(type = ZeroRedundancyOptimizer,
+                     optimizer_class = torch.optim.AdamW, 
+                     lr=1e-3*(batch_size*3/256), 
+                     eps= 1e-07,
+                     weight_decay=0.025),
+    grad_clip = dict(max_norm=0.2, norm_type=2)
+)
+
+lr_scheduler = dict(
+    type = BaseScheduler,
+    regular_scheduler = dict(
+            type=torch.optim.lr_scheduler.CosineAnnealingLR,
+            T_max=3,
+            eta_min=3e-5,
+            verbose=True
+        ),
+    warmup_by_epoch = False,
+    warmup_epochs = 1,
+    warmup = 'constant_value',
+    warmup_iters = 5,
+    warmup_value = 1e-4
+    )
+
 
 compute = dict(
     gpu_ids = [0,1,2],
@@ -52,33 +78,14 @@ runner = dict(
     max_epochs = 4, #300
     max_iters = 10000,
     val_freq_epoch = 1,
-    val_freq_iter = 1,
-    save_freq_epoch = 1,
-    save_freq_iter = 1000,
+    val_freq_iter = 50,
+    save_freq_iter = 10000,
     log_freq = 5,
     resume_train = False,
-    resume_checkpoint = 'epoch_3.pth',
+    # resume_checkpoint = 'epoch_1_2e-5lr_01042024.pth',
+    resume_checkpoint = 'exception_02042024.pth',
 )
 
-optimizer = dict(
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=2e-3*(batch_size*3/4096), weight_decay=0.01), # TinyViT pretraining settings
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3*(batch_size*3/256), weight_decay=0.025), # RepViT default settings
-    # grad_clip = dict(max_norm=5, norm_type=2)
-)
-lr_scheduler = BaseScheduler(
-    regular_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer['optimizer'],
-            T_max=3,
-            eta_min=1e-6,
-            verbose=True
-        ),
-    optimizer = optimizer['optimizer'],
-    warmup = 'constant_value',
-    warmup_by_epoch = True,
-    warmup_epochs = 1, # should be 5 if 300 epochs used
-    warmup_iters = 10000,
-    warmup_value = 2e-6
-)
 loss = losses.DistillationLoss(
     distillation_type = 'mse',
     tau = 1.0,

@@ -8,6 +8,19 @@ import torch.distributed as dist
 import math 
 from .BaseDataset import BaseDataset
 
+class DistributedSampler(torch.utils.data.DistributedSampler):
+    def __init__(self,
+                 dataset, 
+                num_replicas, 
+                rank,
+                seed,
+                 start_idx = 0,
+                 **kwargs):
+        super().__init__(dataset=dataset, 
+                        num_replicas=num_replicas, 
+                        rank=rank,
+                        seed=seed, **kwargs)
+
 class ClassBalancedSampler(sampler.Sampler):
     r"""Makes sure each class is sampled from equally.
     Also restricts data loading to a subset of the dataset.
@@ -69,6 +82,7 @@ class ClassBalancedSampler(sampler.Sampler):
                  subset_classes=None,
                  shuffle=True,
                  num_sample_class=1,
+                 start_idx = 0,
                  **kwargs):
         
         if num_replicas is None:
@@ -93,6 +107,7 @@ class ClassBalancedSampler(sampler.Sampler):
         self.num_sample_class = num_sample_class
         self.shuffle = shuffle
         self.seed = seed
+        self.start_idx = start_idx
 
         self.n_samples_per_process = int(
             math.ceil(
@@ -165,7 +180,7 @@ class ClassBalancedSampler(sampler.Sampler):
         else:
             indices += indices[:(self.total_size - len(indices))]
         assert len(indices) == self.total_size
-
+        
         self.indices = indices
 
     def __iter__(self):
@@ -178,12 +193,12 @@ class ClassBalancedSampler(sampler.Sampler):
         offset = self.n_samples_per_process * self.rank
         indices = self.indices[offset:offset + self.n_samples_per_process]
         assert len(indices) == self.n_samples_per_process
-
+        indices = indices[self.start_idx:]
         return iter(indices)
     
     
     def __len__(self) -> int:
-        return self.n_samples_per_process
+        return self.n_samples_per_process - self.start_idx
 
     def set_epoch(self, epoch: int) -> None:
         r"""

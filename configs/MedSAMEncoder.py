@@ -1,9 +1,8 @@
 import torch
 import models
 import datasets
-from torch.utils.data import DistributedSampler
 import os 
-from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_creator
+from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_creator, DistributedSampler
 import losses
 import metrics
 import pipelines
@@ -82,7 +81,6 @@ runner = dict(
     max_iters = 10000,
     val_freq_epoch = 1,
     val_freq_iter = 1000,
-    save_freq_epoch = 1,
     save_freq_iter = 1000,
     log_freq=5,
     resume_train = True,

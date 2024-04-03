@@ -1,9 +1,8 @@
 import torch
 import models
 import datasets
-from torch.utils.data import DistributedSampler
 import os 
-from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_creator
+from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_creator, DistributedSampler
 import losses
 import metrics
 import pipelines
