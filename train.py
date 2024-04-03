@@ -91,7 +91,7 @@ def main(args):
             find_unused_parameters=False
             )
         
-    cfg.optimizer['optimizer'] = create_object_from_params(cfg.optimizer['optimizer'], params=model.parameters())
+    cfg.optimizer['optimizer'] = create_optimizer(cfg.optimizer, model)
     cfg.lr_scheduler = create_object_from_params(cfg.lr_scheduler, optimizer=cfg.optimizer['optimizer'])
     
     if cfg.runner['type'].lower() == 'epoch':

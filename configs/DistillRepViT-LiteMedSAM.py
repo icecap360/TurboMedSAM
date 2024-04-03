@@ -12,7 +12,7 @@ from functools import partial
 import savers
 from torch.distributed.optim import ZeroRedundancyOptimizer
 
-batch_size = 4
+batch_size = 2
 encoder_embed_dim=768
 encoder_depth=12
 encoder_num_heads=12
@@ -21,7 +21,7 @@ prompt_embed_dim = 256
 vit_patch_size = 16
 
 model = models.TeacherStudentModel(
-    student=models.repvit_model_m1_5(
+    student=models.repvit_model_m2_3(
             # init_cfg={
             #     "type": "pretrained",
             #     # "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/repvit_sam.pt",
@@ -60,12 +60,13 @@ model = models.TeacherStudentModel(
 
 optimizer = dict(
     # optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3*(batch_size*3/256), weight_decay=0.025), # RepViT default settings
-    optimizer = dict(type = ZeroRedundancyOptimizer,
-                     optimizer_class = torch.optim.AdamW, 
+    optimizer = dict(type = torch.optim.AdamW, # type = ZeroRedundancyOptimizer,
+                    #  optimizer_class = torch.optim.AdamW, 
                      lr=1e-3*(batch_size*3/256), 
                      eps=1e-7,
                      weight_decay=0.025),
-    grad_clip = dict(max_norm=0.2, norm_type=2)
+    grad_clip = dict(max_norm=0.2, norm_type=2),
+    use_galore=True,
 )
 
 lr_scheduler = dict(
