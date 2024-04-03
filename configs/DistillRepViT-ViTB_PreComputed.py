@@ -12,7 +12,7 @@ from functools import partial
 import savers
 from torch.distributed.optim import ZeroRedundancyOptimizer
 
-batch_size = 9
+batch_size = 8
 image_size = 1024
 
 model = torch.compile(models.repvit_model_m2_3(

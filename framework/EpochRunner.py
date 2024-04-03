@@ -140,7 +140,7 @@ class EpochBasedRunner(BaseRunner):
                 if isinstance(self.optimizer, ZeroRedundancyOptimizer) :
                     self.optimizer.consolidate_state_dict(0)
                 if self._rank ==0:
-                    self.logger.info('Saving to checkpoint...')
+                    self.logger.info_and_print('Saving to checkpoint...')
                     self.save_checkpoint(
                                 out_dir = self.work_dir,
                                 save_optimizer = self.save_optimizer,
