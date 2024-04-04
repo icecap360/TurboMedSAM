@@ -15,7 +15,7 @@ from torch.distributed.optim import ZeroRedundancyOptimizer
 batch_size = 8
 image_size = 1024
 
-model = torch.compile(models.repvit_model_m2_3(
+model = models.repvit_model_m2_3(
             init_cfg=None, #{
             #     "type": "pretrained",
             #     "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/repvit_sam.pt",
@@ -23,7 +23,7 @@ model = torch.compile(models.repvit_model_m2_3(
             # },
             distillation=True,
             num_classes=0
-        ))
+        )
 
 optimizer = dict(
     # optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3*(batch_size*3/256), weight_decay=0.025), # RepViT default settings
@@ -39,14 +39,14 @@ lr_scheduler = dict(
     type = BaseScheduler,
     regular_scheduler = dict(
             type=torch.optim.lr_scheduler.CosineAnnealingLR,
-            T_max=3,
+            T_max=4,
             eta_min=3e-5,
             verbose=True
         ),
     warmup_by_epoch = False,
-    warmup_epochs = 1,
+    warmup_epochs = 2,
     warmup = 'constant_value',
-    warmup_iters = 5,
+    warmup_iters = 75000,
     warmup_value = 1e-4
     )
 
@@ -77,13 +77,14 @@ runner = dict(
     type = 'epoch',
     max_epochs = 4, #300
     max_iters = 10000,
-    val_freq_epoch = 1,
+    val_freq_epoch = 2,
     val_freq_iter = 50,
     save_freq_iter = 10000,
     log_freq = 5,
-    resume_train = False,
+    resume_train = True,
     # resume_checkpoint = 'epoch_1_2e-5lr_01042024.pth',
-    resume_checkpoint = 'exception_02042024.pth',
+    # resume_checkpoint = 'exception_02042024.pth',
+    resume_checkpoint = 'epoch_1_03042024.pth',
 )
 
 loss = losses.DistillationLoss(

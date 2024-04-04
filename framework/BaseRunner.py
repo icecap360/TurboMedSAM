@@ -129,7 +129,8 @@ class BaseRunner(metaclass=ABCMeta):
             if not os.path.isabs(self.resume_checkpoint):
                 self.resume_checkpoint = os.path.join(self.work_dir, self.resume_checkpoint) 
             assert os.path.exists(self.resume_checkpoint), 'Checkpoint must be a valid path'
-            self.resume(self.resume_checkpoint, self.distributed, map_location=self.device)
+            self.resume(self.resume_checkpoint, self.distributed, map_location=self.device, 
+                        resume_lr_scheduler=True)
 
     @property
     def model_name(self) -> str:
@@ -381,7 +382,7 @@ class BaseRunner(metaclass=ABCMeta):
                              load_optimizer=resume_optimizer, 
                              load_lr_scheduler=resume_lr_scheduler, 
                              load_scaler=resume_scaler, 
-                             revise_keys= [(r'^module.', '')])
+                             revise_keys= [(r'^module.', ''), (r'^_orig_mod.', '')])
         self.log_info_and_print('resumed epoch {}, iter {}'.format(self._epoch, self._iter))
         
     def get_hook_info(self) -> str:

@@ -204,6 +204,17 @@ class EpochBasedRunner(BaseRunner):
                 loader.sampler.set_epoch(self._epoch)
             
             self._epoch += 1
+            if isinstance(self.optimizer, ZeroRedundancyOptimizer) :
+                    self.optimizer.consolidate_state_dict(0)
+            if self._rank ==0:
+                self.logger.info_and_print('Saving to checkpoint...')
+                self.save_checkpoint(
+                            out_dir = self.work_dir,
+                            save_optimizer = self.save_optimizer,
+                            save_scheduler = True,
+                            filename = 'epoch_{epoch}.pth'.format(
+                                epoch=self._epoch,
+                            ))
             if self._epoch % self.val_freq_epoch == 0:
                 for loader in data_loader_val:
                     self.val(loader, self._epoch)

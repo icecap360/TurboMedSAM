@@ -114,6 +114,9 @@ class BaseScheduler(_LRScheduler):
                 self.latest_lr = self.get_warmup_lr_epochs()
             else:
                 self.latest_lr = self.get_warmup_lr_iters()
+        for _, data in enumerate(zip(self.optimizer.param_groups, self.latest_lr)):
+            param_group, lr = data
+            param_group['lr'] = lr
 
     def get_warmup_lr_iters(self):        
         return self._get_warmup_lr(self.regular_lr, self.iter_cnt, self.warmup_iters)
