@@ -12,10 +12,10 @@ from functools import partial
 import savers
 from torch.distributed.optim import ZeroRedundancyOptimizer
 
-batch_size = 8
+batch_size = 12
 image_size = 1024
 
-model = models.repvit_model_m2_3(
+model = models.repvit_model_m1_5(
             init_cfg=None, #{
             #     "type": "pretrained",
             #     "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/repvit_sam.pt",
@@ -44,31 +44,10 @@ lr_scheduler = dict(
             verbose=True
         ),
     warmup_by_epoch = False,
-    warmup_epochs = 2,
+    warmup_epochs = 1,
     warmup = 'constant_value',
     warmup_iters = 75000,
     warmup_value = 1e-4
-    )
-
-
-compute = dict(
-    gpu_ids = [0,1,2],
-    use_cpu = False,
-    use_amp = True,
-    mp_start_method = 'fork',
-    opencv_num_threads=0,
-    cudnn_benchmark=False,
-    workers_per_gpu=4,
-    samples_per_gpu=batch_size,
-    batch_size=batch_size,
-    pin_memory=False,
-    prefetch_factor=2,
-    broadcast_bn_buffer=True,
-    persistent_workers=False,
-    job_launcher = dict(
-        type='pytorch', #['none', 'pytorch', 'slurm', 'mpi'],
-        dist_params = dict(backend='nccl', port=29515)
-        )
     )
 
 work_dir = 'work_dir'
@@ -84,7 +63,7 @@ runner = dict(
     resume_train = True,
     # resume_checkpoint = 'epoch_1_2e-5lr_01042024.pth',
     # resume_checkpoint = 'exception_02042024.pth',
-    resume_checkpoint = 'epoch_1_03042024.pth',
+    resume_checkpoint = 'epoch_1.pth',
 )
 
 loss = losses.DistillationLoss(
@@ -105,8 +84,11 @@ teacher_root = '/pub5/qasim/MedSAM/MedSAM1024/results'
 pipeline_type = pipelines.CVPRMedSAMPipeline(
     input_img_shape=image_size,
     target_mask_shape=256,
-    bbox_shift=5
-)
+    bbox_shift=5,
+    normalize=True,
+    means = [0.2482501, 0.21106622, 0.20026337], 
+    stds = [0.3038128, 0.27170245, 0.26680432]
+    )
 data = dict(
     train=dict(
         dataset = dict(       
@@ -158,3 +140,23 @@ saver = dict(
     directory = os.path.join(work_dir, exp_name, 'results'),
     keys = ['embeddings']
 )
+
+compute = dict(
+    gpu_ids = [0,1,2],
+    use_cpu = False,
+    use_amp = True,
+    mp_start_method = 'fork',
+    opencv_num_threads=0,
+    cudnn_benchmark=False,
+    workers_per_gpu=4,
+    samples_per_gpu=batch_size,
+    batch_size=batch_size,
+    pin_memory=False,
+    prefetch_factor=2,
+    broadcast_bn_buffer=True,
+    persistent_workers=False,
+    job_launcher = dict(
+        type='pytorch', #['none', 'pytorch', 'slurm', 'mpi'],
+        dist_params = dict(backend='nccl', port=29515)
+        )
+    )

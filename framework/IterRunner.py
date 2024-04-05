@@ -172,16 +172,17 @@ class IterBasedRunner(BaseRunner):
                 if isinstance(self.optimizer, ZeroRedundancyOptimizer) :
                     self.optimizer.consolidate_state_dict(0)
                 if self._rank ==0:
-                    self.logger.info_and_print('Saving to checkpoint...')
+                    filename = 'iter_{iter}-bsz{batch_sz}-wsz{world_size}.pth'.format(
+                            iter=self._iter,
+                            batch_sz = self.samples_per_gpu,
+                            world_size=self._world_size
+                        )
+                    self.logger.info_and_print('Saving to checkpoint '+filename+' ...')
                     self.save_checkpoint(
                         out_dir = self.work_dir,
                         save_optimizer = self.save_optimizer,
                         save_scheduler = True,
-                        filename = 'iter_{iter}-bsz{batch_sz}-wsz{world_size}.pth'.format(
-                            iter=self._iter,
-                            batch_sz = self.samples_per_gpu,
-                            world_size=self._world_size
-                        ))
+                        filename = filename)
             if self._iter % self.val_freq_iter == 0:
                 for loader in data_loader_val:
                     self.val(data_loader=loader)

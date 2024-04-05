@@ -11,11 +11,14 @@ import random
 
 class CVPRMedSAMPipeline:
 
-    def __init__(self, input_img_shape, target_mask_shape, bbox_shift):
+    def __init__(self, input_img_shape, target_mask_shape, bbox_shift,
+                 normalize, means, stds):
         self.input_img_shape = input_img_shape
         self.target_mask_shape = target_mask_shape
         self.bbox_shift = bbox_shift
-
+        self.means = means
+        self.normalize = normalize
+        self.stds= stds
     def pipeline(self, inputs, outputs, meta):
         if meta['image_type'] == '2D':
             return self.preprocess_2D(
@@ -24,7 +27,8 @@ class CVPRMedSAMPipeline:
             meta,
             self.input_img_shape,
             self.target_mask_shape,
-            self.bbox_shift
+            self.bbox_shift,
+            self.normalize
             )
         elif meta['image_type'] == '3D':
             return self.preprocess_3D(
@@ -33,7 +37,8 @@ class CVPRMedSAMPipeline:
             meta,
             self.input_img_shape,
             self.target_mask_shape,
-            self.bbox_shift
+            self.bbox_shift,
+            self.normalize
         )
         else:
             raise Exception(meta['image_type']+'is unknown')
@@ -45,13 +50,16 @@ class CVPRMedSAMPipeline:
             meta,
             self.input_img_shape,
             self.target_mask_shape,
-            self.bbox_shift
+            self.bbox_shift,
+            self.normalize
         )
     
     def pipeline_inference(self, inputs, meta):
         img_padded, _ = self.img_transform(
             inputs['image'],
-            self.input_img_shape)
+            self.input_img_shape, 
+            self.normalize,
+            self.means, self.stds)
         return  {"image" : np.float32(img_padded),
                 'bbox' : np.float32(inputs["bbox"][None, None, ...]),
                 "meta"  : meta}
@@ -59,11 +67,12 @@ class CVPRMedSAMPipeline:
     def pipeline_encoder(self, inputs, outputs, meta):
         img_padded, _ = self.img_transform(
             inputs['image'],
-            self.input_img_shape)
+            self.input_img_shape,
+            self.normalize, self.means, self.stds)
         return  {"image" : np.float32(img_padded),
                 "meta"  : meta}, outputs
         
-    def preprocess_3D(self, voxels, gt, meta, input_img_shape, target_mask_shape, bbox_shift):
+    def preprocess_3D(self, voxels, gt, meta, input_img_shape, target_mask_shape, bbox_shift, normalize):
         inputs = dict(
             images = [],
             bboxes= [],
@@ -75,13 +84,14 @@ class CVPRMedSAMPipeline:
         for i in range(voxels.shape[0]):
             inputs2D, _ = self.preprocess_2D(voxels[i, :, :], gt[i, :, :], meta, bbox_shift)
             inputs["images"].append(inputs2D["image"])
-            inputs["bboxes"].append(inputs2D["bbox"])
+            inputs["bboxes"].append(inputs2D["bbox"], normalize)
         return inputs, outputs
 
-    def preprocess_2D_FFCV(self, img, gt, meta, input_img_shape, target_mask_shape, bbox_shift):
+    def preprocess_2D_FFCV(self, img, gt, meta, input_img_shape, target_mask_shape, bbox_shift, normalize):
         img_resize = self._resize_longest_side(img, input_img_shape) # Resizing
         img_padded = self._pad_image(img_resize, input_img_shape) # (256, 256, 3)
-        
+        if normalize:
+            img_padded = self.normalize_img(img_padded, self.means, self.stds)
         gt2D = self.target_transform(gt, meta['npz_path'], target_mask_shape)
 
         # add data augmentation: random fliplr and random flipud
@@ -116,8 +126,8 @@ class CVPRMedSAMPipeline:
             "meta": meta,
         }
 
-    def preprocess_2D(self, img, gt, meta, input_img_shape, target_mask_shape, bbox_shift):
-        img_padded, img_resize_shape = self.img_transform(img, input_img_shape)
+    def preprocess_2D(self, img, gt, meta, input_img_shape, target_mask_shape, bbox_shift, normalize):
+        img_padded, img_resize_shape = self.img_transform(img, input_img_shape, normalize, self.means, self.stds)
         gt2D = self.target_transform(gt, meta['npz_path'], target_mask_shape)
 
         # add data augmentation: random fliplr and random flipud
@@ -152,14 +162,21 @@ class CVPRMedSAMPipeline:
             "meta": meta,
         }
 
-    def img_transform(self, img_3c, target_length):
+    def img_transform(self, img_3c, target_length, normalize, means, stds):
         img_resize = self._resize_longest_side(img_3c, target_length=target_length) # Resizing
         img_resize = (img_resize - img_resize.min()) / np.clip(img_resize.max() - img_resize.min(), a_min=1e-8, a_max=None) # normalize to [0, 1], (H, W, 3
         img_padded = self._pad_image(img_resize, target_length) # (256, 256, 3)
         # convert the shape to (3, H, W)
         img_padded = np.transpose(img_padded, (2, 0, 1)) # (3, 256, 256)
         assert np.max(img_padded)<=1.0 and np.min(img_padded)>=0.0, 'image should be normalized to [0, 1]'
+        if normalize:
+            img_padded = self.normalize_img(img_padded, means, stds)
         return img_padded, img_resize.shape
+
+    def normalize_img(self, img, means, stds):
+        if isinstance(means, np.ndarray):
+            return (img - means)/stds
+        return (img - np.array(means).reshape(3,1,1))/np.array(stds).reshape(3,1,1)
 
     def _resize_longest_side(self, image, target_length, interpolation=cv2.INTER_AREA):
         """
@@ -203,17 +220,26 @@ class CVPRMedSAMPipeline:
 
 class CVPRMedSAMDistillationPipeline(CVPRMedSAMPipeline):
 
-    def __init__(self, student_image_shape, teacher_image_shape, target_mask_shape, bbox_shift):
+    def __init__(self, student_image_shape, teacher_image_shape, target_mask_shape, bbox_shift, 
+                 student_normalize, teacher_normalize, stds, means):
         self.student_image_shape = student_image_shape
         self.teacher_image_shape = teacher_image_shape
+        self.student_normalize = student_normalize
+        self.teacher_normalize = teacher_normalize
         self.target_mask_shape = target_mask_shape
         self.bbox_shift = bbox_shift
+        self.stds = stds
+        self.means = means
 
     def pipeline_teacher_student(self, inputs, outputs, meta):
         img_student_padded, _ = self.img_transform(
             inputs['image'],
-            self.student_image_shape)
+            self.student_image_shape, 
+            self.student_normalize,
+            self.means, self.stds)
         img_teacher_padded, _ = self.img_transform(
             inputs['image'],
-            self.teacher_image_shape)
+            self.teacher_image_shape, 
+            self.teacher_normalize,
+            self.means, self.stds)
         return  {"student_image" : np.float32(img_student_padded), "teacher_image" : np.float32(img_teacher_padded), "meta"  : meta}, outputs

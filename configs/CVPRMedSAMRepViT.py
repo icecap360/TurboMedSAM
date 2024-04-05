@@ -10,12 +10,12 @@ from torchvision import transforms
 import dataloaders
 
 img_size = 1024
-
+batch_size = 64
 model = models.LiteMedSAM(
-        encoder = models.repvit_model(
+        encoder = models.repvit_model_m2_3(
             init_cfg={
                 "type": "pretrained",
-                "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/repvit_sam.pt",
+                "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/work_dir/DistillRepViT-ViTB_PreComputed/epoch_1_03042024.pth",
                 "strict": True
             },
             distillation=False,
@@ -41,37 +41,44 @@ model = models.LiteMedSAM(
             )
         )
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
-grad_clip = dict(max_norm=35, norm_type=2)
-lr_scheduler = BaseScheduler(
-    regular_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-            optimizer,
+optimizer = dict(
+    optimizer = dict(
+        type = torch.optim.AdamW,
+        lr=1e-3*(batch_size*3/256), weight_decay=0.01),
+    grad_clip = dict(max_norm=35, norm_type=2)
+)
+lr_scheduler = dict(
+    type = BaseScheduler,
+    regular_scheduler = dict(
+            type=torch.optim.lr_scheduler.MultiStepLR,
             gamma=0.1,
-            milestones=[48,96],
+            milestones=[3],
             verbose=True
         ),
-    optimizer=optimizer,
-    warmup=None,
-    warmup_iters=500,
-    warmup_ratio=0.1
-)
+    warmup_by_epoch = False,
+    warmup_epochs = 1,
+    warmup = 'constant_value',
+    warmup_iters = 75000,
+    warmup_value = 4e-5
+    )
 
 compute = dict(
-    gpu_ids = [1,2],
+    gpu_ids = [0,1,2],
     use_cpu = False,
-    use_amp = False,
+    use_amp = True,
     mp_start_method = 'fork',
     opencv_num_threads=0,
     cudnn_benchmark=False,
     workers_per_gpu=4,
-    samples_per_gpu=8,
-    batch_size=8,
+    samples_per_gpu=batch_size,
+    batch_size=batch_size,
     pin_memory=False,
     prefetch_factor=2,
     broadcast_bn_buffer=True,
     persistent_workers=False,
+    find_unused_parameters = True,
     job_launcher = dict(
-        type='none', #['none', 'pytorch', 'slurm', 'mpi'],
+        type='pytorch', #['none', 'pytorch', 'slurm', 'mpi'],
         dist_params = dict(backend='nccl', port=29515)
         )
     )
@@ -80,13 +87,13 @@ work_dir = 'work_dir'
 exp_name = os.path.basename(__file__)[:-3]
 runner = dict(
     type= 'epoch',
-    max_epochs = 1, #300
+    max_epochs = 3, #300
     max_iters = 10000,
     val_freq_epoch = 1,
     val_freq_iter = 1000,
     save_freq_iter = 1000,
     log_freq=5,
-    resume_train = True,
+    resume_train = False,
     resume_checkpoint = None,
 )
 
@@ -103,8 +110,9 @@ data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
 pipeline_type = pipelines.CVPRMedSAMPipeline(
     input_img_shape=img_size,
     target_mask_shape=256,
-    bbox_shift=5
-)
+    bbox_shift=5,
+    normalize=False,
+    means = [0.2482501, 0.21106622, 0.20026337],     stds = [0.3038128, 0.27170245, 0.26680432])
 data = dict(
     train=dict(
         dataset = dict(       

@@ -83,12 +83,12 @@ def main(args):
     
     model = model.to(device)
     if distributed:
-        # find_unused_parameters = cfg.get('find_unused_parameters', False)
+        find_unused_parameters = cfg.compute.get('find_unused_parameters', False)
         model = torch.nn.parallel.DistributedDataParallel(
             model,
             device_ids=None,
             broadcast_buffers=False,
-            find_unused_parameters=False
+            find_unused_parameters=find_unused_parameters
             )
         
     cfg.optimizer['optimizer'] = create_optimizer(cfg.optimizer, model)
