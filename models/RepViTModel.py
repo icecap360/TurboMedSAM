@@ -2,7 +2,8 @@ import torch.nn as nn
 from timm.models.vision_transformer import trunc_normal_
 from timm.models.layers import SqueezeExcite
 import torch
-from framework import BaseModule
+from framework import BaseModule, keep_keys
+import os
 
 __all__ = ['repvit_model_m1_1', 'repvit_model_m2_3', 'repvit_model_m0_9', 'repvit_model_m1_5', 'repvit_model_m0_6']
 
@@ -363,15 +364,17 @@ class RepViTModel(BaseModule):
         elif 'pretrained' in self.init_cfg['type'].lower():
             if not 'checkpoint' in self.init_cfg.keys():
                 raise Exception('Missing checkpoint')   
-            if 'sam' in self.init_cfg['checkpoint'].lower():
+            if 'sam' in os.path.basename(self.init_cfg['checkpoint']).lower():
                 sam_state_dict = torch.load(self.init_cfg['checkpoint'])
                 image_encoder_params = [k for k in sam_state_dict.keys() if k.startswith('image_encoder')]
                 img_encoder_dict = {k.replace('image_encoder.', ''):sam_state_dict[k] for k in image_encoder_params}
                 self.load_state_dict(img_encoder_dict, 
                                  strict=True if self.init_cfg.get('strict')==None else self.init_cfg.get('strict'))
             else:
-                self.load_state_dict(torch.load(self.init_cfg['checkpoint']), 
-                                 strict=self.init_cfg.get('strict') or True)
+                self.load_state_dict(
+                        keep_keys(torch.load(self.init_cfg['checkpoint'])['state_dict'],"module.",
+                                  [(r"^module.", "")]), 
+                        strict=self.init_cfg.get('strict') or True)
         else:
             raise Exception('init_cfg is formatted incorrectly')
 

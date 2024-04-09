@@ -124,6 +124,8 @@ class BaseRunner(metaclass=ABCMeta):
         self._max_epochs = max_epochs
         self._max_iters = max_iters
 
+        self.loss.initialize(self.device)
+
         assert (self.resume_train and self.resume_checkpoint) or not self.resume_train
         if self.resume_train:
             if not os.path.isabs(self.resume_checkpoint):

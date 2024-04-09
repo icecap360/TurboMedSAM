@@ -12,7 +12,7 @@ from functools import partial
 import savers
 from torch.distributed.optim import ZeroRedundancyOptimizer
 
-batch_size = 13
+batch_size = 8
 image_size = 1024
 
 model = models.repvit_model_m1_5(
@@ -27,8 +27,8 @@ model = models.repvit_model_m1_5(
 
 optimizer = dict(
     # optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3*(batch_size*3/256), weight_decay=0.025), # RepViT default settings
-    optimizer = dict(type=torch.optim.AdamW,#type = ZeroRedundancyOptimizer,
-                    #  optimizer_class = torch.optim.AdamW, 
+    optimizer = dict(type = ZeroRedundancyOptimizer,
+                     optimizer_class = torch.optim.AdamW, 
                      lr=1e-4*(batch_size*3/256), 
                      eps= 1e-07,
                      weight_decay=0.025),
@@ -43,8 +43,8 @@ lr_scheduler = dict(
             eta_min=5e-6,
             verbose=True
         ),
-    warmup_by_epoch = True,
-    warmup_epochs = 4,
+    warmup_by_epoch = False,
+    warmup_epochs = 1,
     warmup = 'constant_value',
     warmup_iters = 75000,
     warmup_value = 1e-4
@@ -53,14 +53,14 @@ lr_scheduler = dict(
 work_dir = 'work_dir'
 exp_name = os.path.basename(__file__)[:-3]
 runner = dict(
-    type = 'epoch',
-    max_epochs = 4, #300
-    max_iters = 10000,
-    val_freq_epoch = 2,
-    val_freq_iter = 50,
-    save_freq_iter = 10000,
+    type = 'iter',
+    max_epochs = 10000, #300
+    max_iters = 100000,
+    val_freq_epoch = 500,
+    val_freq_iter = 10000,
+    save_freq_iter = 99999999,
     log_freq = 5,
-    resume_train = True,
+    resume_train = False,
     # resume_checkpoint = 'epoch_1_2e-5lr_01042024.pth',
     # resume_checkpoint = 'exception_02042024.pth',
     resume_checkpoint = '/home/qasim/Projects/TurboMedSAM/work_dir/DistillRepViT-ViTB_PreComputed/epoch_2_20000.pth',
@@ -144,17 +144,17 @@ saver = dict(
 compute = dict(
     gpu_ids = [0,1,2],
     use_cpu = False,
-    use_amp = True,
+    use_amp = False,
     mp_start_method = 'fork',
     opencv_num_threads=0,
     cudnn_benchmark=False,
     workers_per_gpu=4,
     samples_per_gpu=batch_size,
     batch_size=batch_size,
-    pin_memory=True,
+    pin_memory=False,
     prefetch_factor=2,
     broadcast_bn_buffer=True,
-    persistent_workers=True,
+    persistent_workers=False,
     job_launcher = dict(
         type='pytorch', #['none', 'pytorch', 'slurm', 'mpi'],
         dist_params = dict(backend='nccl', port=29515)

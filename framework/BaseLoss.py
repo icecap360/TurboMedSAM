@@ -16,7 +16,12 @@ class BaseLoss( ABC):
         self.loss_weight = loss_weight
         super(BaseLoss, self).__init__()
         assert np.all([type(v) in (float, int) for v in loss_weight.values()]) 
-        
+    
+    def initialize(self, device):
+        self.loss_weight_type_float = True
+        for k in self.loss_weight.keys():
+            self.loss_weight[k] = torch.tensor(self.loss_weight[k], dtype=torch.float32,  device=device, requires_grad=False) 
+
     @abstractmethod
     def forward_loss(self, pred, ground_truth):
         '''
@@ -42,7 +47,7 @@ class BaseLoss( ABC):
         for i in range(len(loss_dict_keys)):
             var_key = loss_dict_keys[i]
             weight_key = var_key
-            weighted_sum_loss = weighted_sum_loss + loss_dict[var_key] * torch.tensor(loss_weight[weight_key], dtype=torch.float32,  device=device, requires_grad=False)
+            weighted_sum_loss = weighted_sum_loss + loss_dict[var_key] * loss_weight[weight_key]
         return  weighted_sum_loss
     
         

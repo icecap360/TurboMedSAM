@@ -112,7 +112,7 @@ def main(args):
     else:
         runner = IterBasedRunner(
             model=model,
-            optimizer=create_optimizer(cfg.optimizer),
+            optimizer=cfg.optimizer,
             loss=cfg.loss,
             metric=cfg.metric,
             lr_scheduler=cfg.lr_scheduler,
@@ -140,7 +140,7 @@ def main(args):
                                                "train", 
                                                start_idx=(runner._iter%len(train_loader))*runner.batch_size)
     try:
-        torch.autograd.set_detect_anomaly(True)
+        # torch.autograd.set_detect_anomaly(True)
         runner.run(train_loader, 
                val_loader,
                remaining_train_loader)

@@ -95,6 +95,8 @@ class EpochBasedRunner(BaseRunner):
             
             self._inner_iter = i
             self.call_hook('before_train_iter')
+            if self.distributed:
+                dist.barrier()
             self.optimizer.zero_grad()
             with torch.autocast(device_type=self.device, dtype=torch.float16, enabled=self.use_amp):
                 preds = self.model(inputs)    
@@ -117,7 +119,6 @@ class EpochBasedRunner(BaseRunner):
             self.lr_scheduler.step_iter()
 
             batch_time.update(time.time() - end)
-            
             samples_processed += batch_size
 
             if i % self.log_freq == 0:
@@ -155,7 +156,7 @@ class EpochBasedRunner(BaseRunner):
             del data_batch, inputs, preds, batch_size
             self._iter += 1
             end = time.time()
-        
+
         self.lr_scheduler.step()
         self.call_hook('after_train_epoch')
     

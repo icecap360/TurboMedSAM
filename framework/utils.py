@@ -16,6 +16,8 @@ import pickle
 from .Distributed import get_dist_info
 import os
 from copy import deepcopy
+import re
+from collections import OrderedDict
 
 def dict_to_device(data, device):
     new_data = {}
@@ -252,3 +254,23 @@ def create_object_from_params(params_cfg, **kwargs):
     params_cfg = deepcopy(params_cfg)
     type_object = params_cfg.pop('type')
     return type_object(**params_cfg, **kwargs)
+
+def keep_keys(dictionary:dict, prefix:str, revise_keys = []):
+    filtered_dict = {
+        k:v for k,v in dictionary.items() if k.startswith(prefix)
+    }
+    for p, r in revise_keys:
+        filtered_dict = OrderedDict(
+            {re.sub(p, r, k): v
+            for k, v in filtered_dict.items()})
+    return filtered_dict
+
+def remove_keys(dictionary:dict, prefix:str, revise_keys = []):
+    filtered_dict = {
+        k:v for k,v in dictionary.items() if not prefix in k
+    }
+    for p, r in revise_keys:
+        filtered_dict = OrderedDict(
+            {re.sub(p, r, k): v
+            for k, v in filtered_dict.items()})
+    return filtered_dict

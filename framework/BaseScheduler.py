@@ -5,6 +5,7 @@ from torch.utils.data import Dataset, DataLoader, sampler
 from .BaseModules import BaseModule
 from torch.optim.lr_scheduler import _LRScheduler
 from .utils import create_object_from_params
+from copy import deepcopy
 
 class BaseScheduler(_LRScheduler):
     '''
@@ -51,7 +52,8 @@ class BaseScheduler(_LRScheduler):
         self.latest_lr = self.regular_scheduler.get_last_lr()
         
         super(BaseScheduler, self).__init__(optimizer, last_epoch=last_epoch, verbose=verbose)
-        self.update_lr()
+        self.warmup_latest_lr()
+        self.update_param_groups(self.latest_lr)
         # NOTE: when resuming from a checkpoint, if 'initial_lr' is not saved,
         # it will be set according to the optimizer params
         # for group in self.optimizer.param_groups:
@@ -72,15 +74,17 @@ class BaseScheduler(_LRScheduler):
     def load_state_dict(self, state_dict):
         """Loads the schedulers state.
 
-        Args:
+        # Args:
             state_dict (dict): scheduler state. Should be an object returned
                 from a call to :meth:`state_dict`.
         """
-        self.regular_lr = state_dict['regular_lr']
         self.iter_cnt = state_dict['iter_cnt']
         self.base_lrs = state_dict['base_lrs']
         self.last_epoch = state_dict['last_epoch']
         self._step_count = state_dict['_step_count']
+        self.latest_lr = self.regular_lr
+        self.warmup_latest_lr()
+        self.update_param_groups(self.latest_lr)
         # self.__dict__.update(state_dict)
         
     def get_lr(self):
@@ -88,7 +92,10 @@ class BaseScheduler(_LRScheduler):
     
     def step_iter(self):
         self.iter_cnt += 1
-        self.update_lr()
+        self.prev_lr = deepcopy(self.latest_lr) 
+        self.warmup_latest_lr()
+        if self.prev_lr != self.latest_lr:
+            self.update_param_groups(self.latest_lr)
 
     def step(self, epoch=None):
         # This is code currently gives a depreciation warning.
@@ -98,10 +105,11 @@ class BaseScheduler(_LRScheduler):
         self.regular_scheduler.step(epoch=self.last_epoch) # ensure synchornization of schedulers
         self.regular_lr = self.regular_scheduler.get_lr()
         self.latest_lr = self.regular_lr
-        self.update_lr()
-        super().step(epoch=self.last_epoch)
+        self.warmup_latest_lr()
+        self.update_param_groups(self.latest_lr)
+        super().step(epoch=self.last_epoch) # this will update the param_groups
 
-    def update_lr(self):
+    def warmup_latest_lr(self):
         if self.warmup is None or \
                 (not self.warmup_by_epoch and self.iter_cnt > self.warmup_iters) or \
                 (self.warmup_by_epoch and self.last_epoch > self.warmup_epochs):
@@ -114,7 +122,9 @@ class BaseScheduler(_LRScheduler):
                 self.latest_lr = self.get_warmup_lr_epochs()
             else:
                 self.latest_lr = self.get_warmup_lr_iters()
-        for _, data in enumerate(zip(self.optimizer.param_groups, self.latest_lr)):
+    
+    def update_param_groups(self, latest_lr):
+        for _, data in enumerate(zip(self.optimizer.param_groups, latest_lr)):
             param_group, lr = data
             param_group['lr'] = lr
 
