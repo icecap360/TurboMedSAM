@@ -92,11 +92,11 @@ pipeline_type = pipelines.CVPRMedSAMPipeline(
 data = dict(
     train=dict(
         dataset = dict(       
-            type = datasets.CVPRMedSAMEncoderPreComputed,
+            type = datasets.CVPRMedSAMEncoderPreCompDataset,
             # classes=classes,
             root_dir=data_root,
             teacher_root=teacher_root,
-            pipeline=pipeline_type.pipeline_encoder),
+            pipeline=pipeline_type.pipeline_encoder_train),
         sampler = dict(
             type = ClassBalancedSampler,
             num_sample_class =  1,
@@ -106,30 +106,30 @@ data = dict(
         ),
     val=dict(
         dataset = dict(       
-            type = datasets.CVPRMedSAMEncoderPreComputed,
+            type = datasets.CVPRMedSAMEncoderPreCompDataset,
             # classes=classes,
             root_dir=data_root,
             teacher_root=teacher_root,
-            pipeline=pipeline_type.pipeline_encoder),
+            pipeline=pipeline_type.pipeline_encoder_train),
         sampler = dict( type = DistributedSampler),
         dataloader_creator = dict( type= dataloaders.CVPRMedSAM_val_dataloader_creator)
         ),
     test=dict(
         dataset = dict(       
-            type = datasets.CVPRMedSAMEncoderPreComputed,
+            type = datasets.CVPRMedSAMEncoderPreCompDataset,
             # classes=classes,
             root_dir=data_root,
             teacher_root=teacher_root,
-            pipeline=pipeline_type.pipeline_encoder),
+            pipeline=pipeline_type.pipeline_encoder_train),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type= dataloaders.CVPRMedSAM_val_dataloader_creator)
     ),
     inference=dict(
         dataset = dict(       
-            type = datasets.CVPRMedSAMEncoderPreComputed,
+            type = datasets.CVPRMedSAMEncoderPreCompDataset,
             # classes=classes,
             root_dir='/pub4/qasim/MedSAM/split_npzs_3chnl/',
-            pipeline=pipeline_type.pipeline_encoder),
+            pipeline=pipeline_type.pipeline_encoder_train),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type = basic_dataloader_creator)
     ),

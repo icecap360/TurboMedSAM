@@ -9,19 +9,20 @@ from abc import ABC, abstractmethod
 class BaseDataset(ABC, Dataset):
 
     @abstractmethod
-    def __init__(self, split_type, pipeline=None, input_transform=None, target_transform=None):
+    def __init__(self, split_type, pipeline=None, transform=None, input_transform=None, target_transform=None):
         super(BaseDataset, self).__init__()
         self.split_type = split_type
+        self.transform = transform
         self.input_transform = WrapperFunc(input_transform) if input_transform else None
         self.target_transform = WrapperFunc(target_transform) if target_transform else None
         self.pipeline = WrapperFunc(pipeline) if pipeline else None
-        assert not((self.pipeline is None) and (self.input_transform is None) and (self.target_transform is None)), 'Either pipeline or input_transform, transform_output must be specified'
+        assert not((self.pipeline is None) and ((self.input_transform is None) or (self.target_transform is None)) and (self.transform is None)), 'One of pipeline, input+target transform or transform must be specified'
 
-    def transform_databatch(self, inputs:dict, outputs:dict, meta:dict):
+    def transform_databatch(self, inputs:dict, targets:dict, meta:dict):
         if self.pipeline != None:
-            return self.pipeline(inputs, outputs, meta)
+            return self.pipeline(inputs, targets, meta)
         else:
-            return self.input_transform(inputs, meta), self.target_transform(outputs, meta)
+            return self.input_transform(inputs, meta), self.target_transform(targets, meta)
 
     def get_cat2indices(self):
         """Get a dict with class as key and indices as values, which will be

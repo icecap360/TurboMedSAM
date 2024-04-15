@@ -175,7 +175,7 @@ data = dict(
             type = datasets.CVPRMedSAMEncoderDataset,
             # classes=classes,
             root_dir='/pub4/qasim/MedSAM/split_npzs_3chnl/',
-            pipeline=pipeline_type.pipeline_encoder),
+            pipeline=pipeline_type.pipeline_encoder_train),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type = basic_dataloader_creator)
     ),

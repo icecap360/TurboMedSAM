@@ -121,7 +121,7 @@ data = dict(
             type = datasets.CVPRMedSAMDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=pipeline_type.pipeline_2D),
+            pipeline=pipeline_type.pipeline_2D_train),
         sampler = dict(
             type = ClassBalancedSampler,
             num_sample_class =  1,
@@ -134,7 +134,7 @@ data = dict(
             type = datasets.CVPRMedSAMDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=pipeline_type.pipeline),
+            pipeline=pipeline_type.pipeline_train),
         sampler = dict( type = DistributedSampler),
         dataloader_creator = dict( type= dataloaders.CVPRMedSAM_val_dataloader_creator)
         ),
@@ -143,7 +143,7 @@ data = dict(
             type = datasets.CVPRMedSAMDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=pipeline_type.pipeline),
+            pipeline=pipeline_type.pipeline_train),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type= dataloaders.CVPRMedSAM_val_dataloader_creator)
     ),

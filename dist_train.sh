@@ -1,4 +1,4 @@
-CONFIG=DistillRepViT-ViTB_PreComputed.py #CVPRMedSAMRepViT.py DistillRepViT-ViTB_PreComputed.py DistillRepViT-LiteMedSAM.py
+CONFIG=DistillRepViT-ViTB.py #CVPRMedSAMRepViT.py DistillRepViT-ViTB_PreComputed.py DistillRepViT-LiteMedSAM.py
 GPUS=3
 PORT=${PORT:-29503}
 # NNODES=${NNODES:-1}

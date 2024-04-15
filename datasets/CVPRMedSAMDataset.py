@@ -9,11 +9,12 @@ from framework import BaseDataset
 import cv2
 import random
 import json  
+from torchvision import tv_tensors
 
 class CVPRMedSAMDataset(BaseDataset):
     """Face Landmarks dataset."""
 
-    def __init__(self, root_dir, split_type, subset_classes=None, pipeline=None, input_transform=None, target_transform=None):
+    def __init__(self, root_dir, split_type, bbox_shift=5, subset_classes=None, pipeline=None, transform=None, input_transform=None, target_transform=None):
         """
         Arguments:
             csv_file (string): Path to the csv file with annotations.
@@ -21,8 +22,9 @@ class CVPRMedSAMDataset(BaseDataset):
             transform (callable, optional): Optional transform to be applied
                 on a sample.
         """
-        super().__init__(split_type, pipeline, input_transform, target_transform)
+        super().__init__(split_type, pipeline, transform, input_transform, target_transform)
         self.root_dir = root_dir
+        self.bbox_shift = bbox_shift
         self.npz_dir = os.path.join(self.root_dir, self.split_type)
         self.classes = os.listdir(self.npz_dir)
         self.subset_classes = subset_classes
@@ -49,7 +51,7 @@ class CVPRMedSAMDataset(BaseDataset):
         
         npz_path = self.npz_paths[idx]
         npz = np.load(npz_path, allow_pickle=True, mmap_mode="r")
-        image = npz['imgs'] 
+        image = np.moveaxis(npz['imgs'],2,0)
         target = npz['gts']
         meta = dict(
             idx=idx,
@@ -57,6 +59,29 @@ class CVPRMedSAMDataset(BaseDataset):
             original_shape = image.shape,
             modality = self.get_modality(npz_path)
         )
+        
+        label_ids = np.unique(target)[1:]
+        try:
+            target = np.uint8(target == random.choice(label_ids.tolist())) # only one label, (256, 256)
+        except:
+            print(npz_path, 'label_ids.tolist()', label_ids.tolist())
+            target = np.uint8(target == np.max(target)) # only one label, (256, 256)
+        gt2D = np.uint8(target > 0)
+        y_indices, x_indices = np.where(gt2D > 0)
+        x_min, x_max = np.min(x_indices), np.max(x_indices)
+        y_min, y_max = np.min(y_indices), np.max(y_indices)
+        # add perturbation to bounding box coordinates
+        H, W = gt2D.shape
+        x_min = max(0, x_min - random.randint(0, self.bbox_shift))
+        x_max = min(W, x_max + random.randint(0, self.bbox_shift))
+        y_min = max(0, y_min - random.randint(0, self.bbox_shift))
+        y_max = min(H, y_max + random.randint(0, self.bbox_shift))
+        bboxes = tv_tensors.BoundingBoxes(
+            np.float32(np.array([x_min, y_min, x_max, y_max])),
+            canvas_size=(H,W),
+            format=tv_tensors.BoundingBoxFormat.XYXY,
+            requires_grad=False
+            )
 
         if min(image.shape) > 3:
             meta['image_type'] = '3D'
@@ -64,12 +89,14 @@ class CVPRMedSAMDataset(BaseDataset):
         else:
             meta['image_type'] = '2D'
 
-        return self.transform_databatch({'image': image},
-                                        {'mask': target}, 
-                                        meta)    
+        return self.transform_databatch({'image': tv_tensors.Image(image), 'bbox': bboxes},
+                                        {'mask': tv_tensors.Mask(target)}, 
+                                        meta) 
     
     def get_modality(self, path:str):
         path = path.replace(self.npz_dir, '')
+        if path[0] == '/':
+            path = path[1:]
         return os.path.normpath(path).split(os.sep)[0]
 
     def get_cat2indices(self):
@@ -98,8 +125,11 @@ class CVPRMedSAMInferenceDataset(CVPRMedSAMDataset):
         
         npz_path = self.npz_paths[idx]
         npz = np.load(npz_path, allow_pickle=True, mmap_mode="r")
-        image = npz['imgs'] 
-        bbox = npz['bbox'] 
+        image = np.moveaxis(npz['imgs'],2,0)
+        bbox = tv_tensors.BoundingBoxes(npz['bbox'], 
+                                        canvas_size=image.shape[:2],
+                                        format=tv_tensors.BoundingBoxFormat.XYXY,
+                                        requires_grad=False)
         meta = dict(
             idx=idx,
             npz_path = npz_path,
@@ -112,13 +142,14 @@ class CVPRMedSAMInferenceDataset(CVPRMedSAMDataset):
         else:
             meta['image_type'] = '2D'
 
-        return self.transform_databatch({'image': image,
+        return self.transform_databatch({'image': tv_tensors.Image(image),
                                          "bbox": bbox},
+                                         {},
                                         meta)    
 
 
 class CVPRMedSAMEncoderDataset(CVPRMedSAMDataset):
-    def __init__(self, root_dir, split_type, subset_classes=None, pipeline=None, input_transform=None, target_transform=None):
+    def __init__(self, root_dir, split_type, subset_classes=None, pipeline=None, transform=None, input_transform=None, target_transform=None):
         """
         Arguments:
             csv_file (string): Path to the csv file with annotations.
@@ -126,7 +157,7 @@ class CVPRMedSAMEncoderDataset(CVPRMedSAMDataset):
             transform (callable, optional): Optional transform to be applied
                 on a sample.
         """
-        super(CVPRMedSAMDataset, self).__init__(split_type, pipeline, input_transform, target_transform)
+        super(CVPRMedSAMDataset, self).__init__(split_type, pipeline, transform, input_transform, target_transform)
         self.root_dir = root_dir
         self.npz_dir = os.path.join(self.root_dir, self.split_type)
         self.classes = os.listdir(self.npz_dir)
@@ -150,7 +181,7 @@ class CVPRMedSAMEncoderDataset(CVPRMedSAMDataset):
         
         npz_path = self.npz_paths[idx]
         npz = np.load(npz_path, allow_pickle=True, mmap_mode="r")
-        image = npz['imgs'] 
+        image = np.moveaxis(npz['imgs'],2,0)
         meta = dict(
             idx=idx,
             npz_path = npz_path,
@@ -163,13 +194,13 @@ class CVPRMedSAMEncoderDataset(CVPRMedSAMDataset):
         else:
             meta['image_type'] = '2D'
 
-        return self.transform_databatch({'image': image}, {},
+        return self.transform_databatch({'image': tv_tensors.Image(image)}, {},
                                         meta)    
 
-class CVPRMedSAMEncoderPreComputed(BaseDataset):
+class CVPRMedSAMEncoderPreCompDataset(BaseDataset):
     """Face Landmarks dataset."""
 
-    def __init__(self, root_dir, teacher_root, split_type, subset_classes=None, pipeline=None, input_transform=None, target_transform=None):
+    def __init__(self, root_dir, teacher_root, split_type, subset_classes=None, pipeline=None, transform=None, input_transform=None, target_transform=None):
         """
         Arguments:
             csv_file (string): Path to the csv file with annotations.
@@ -177,7 +208,7 @@ class CVPRMedSAMEncoderPreComputed(BaseDataset):
             transform (callable, optional): Optional transform to be applied
                 on a sample.
         """
-        super().__init__(split_type, pipeline, input_transform, target_transform)
+        super().__init__(split_type, pipeline, transform, input_transform, target_transform)
         self.root_dir = root_dir
         self.npz_dir = os.path.join(self.root_dir, self.split_type)
         self.classes = os.listdir(self.npz_dir)
@@ -210,7 +241,7 @@ class CVPRMedSAMEncoderPreComputed(BaseDataset):
             os.path.relpath(npz_path, self.root_dir)
         )
         npz = np.load(npz_path, allow_pickle=True, mmap_mode="r")
-        image = npz['imgs'] 
+        image = np.moveaxis(npz['imgs'],2,0)
         meta = dict(
             idx=idx,
             npz_path = npz_path,
@@ -225,9 +256,13 @@ class CVPRMedSAMEncoderPreComputed(BaseDataset):
             meta['image_type'] = '2D'
         
         npz = np.load(encoder_result_path, allow_pickle=True, mmap_mode="r")
+        teacher_embeddings = tv_tensors.Mask(
+            npz['embeddings'].astype(np.float32),
+            dtype=torch.float32
+        )
 
-        return self.transform_databatch({'image': image},
-                                        {'teacher_embeddings': npz['embeddings'].astype(np.float32)},
+        return self.transform_databatch({'image': tv_tensors.Image(image)},
+                                        {'teacher_embeddings': teacher_embeddings},
                                         meta)    
     
     def get_modality(self, path:str):
@@ -279,7 +314,7 @@ class CVPRMedSAMDatasetFFCVWrite(Dataset):
         npz_path = self.npz_paths[idx]
         npz = np.load(npz_path, allow_pickle=True, mmap_mode="r")
         
-        image = npz['imgs'] 
+        image = np.moveaxis(npz['imgs'],2,0)
         assert image.shape[2] == 3
         
         target = npz['gts']

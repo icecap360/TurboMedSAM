@@ -2,15 +2,17 @@ import torch
 import models
 import datasets
 import os 
-from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_creator, DistributedSampler
+from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_creator, DistributedSampler, BasePipeline
 import losses
 import metrics
 import pipelines
 from torchvision import transforms
 import dataloaders
+from torchvision.transforms import v2
 
 img_size = 1024
 batch_size = 12
+
 model = models.LiteMedSAM(
         encoder = models.repvit_model_m1_5(
             init_cfg={
@@ -96,7 +98,7 @@ runner = dict(
     max_iters = 10000,
     val_freq_epoch = 2,
     val_freq_iter = 1000,
-    save_freq_iter = 1000,
+    save_freq_iter = 10000,
     log_freq=5,
     resume_train = False,
     resume_checkpoint = '',
@@ -112,20 +114,38 @@ custom_hooks = []
 seed = 0
 
 data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
-pipeline_type = pipelines.CVPRMedSAMPipeline(
-    input_img_shape=img_size,
-    target_mask_shape=256,
-    bbox_shift=5,
-    normalize=True,
-    means = [0.2482501, 0.21106622, 0.20026337],     
-    stds = [0.3038128, 0.27170245, 0.26680432])
+test_transform = v2.Compose(
+    [
+        # v2.ToImage(),
+        v2.Resize(size=(img_size, img_size), antialias=True),
+        # v2.RandomHorizontalFlip(p=0.5),
+        v2.ToDtype(torch.float32, scale=True),
+        v2.Normalize(mean = [0.2482501, 0.21106622, 0.20026337],     
+                     std = [0.3038128, 0.27170245, 0.26680432])
+    ])
+train_transform = v2.Compose(
+    [
+        v2.Resize(size=(img_size, img_size), antialias=True),
+        v2.RandomResizedCrop(size=(img_size, img_size), 
+                             scale=(0.5, 1.0), 
+                             ratio=(0.75, 1.3333),
+                             antialias=True),
+        v2.RandomHorizontalFlip(p=0.5),
+        # v2.RandAugment(num_ops=2,
+        #                magnitude=9),
+        # v2.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0),
+        v2.ToDtype(torch.float32, scale=True),
+        v2.Normalize(mean = [0.2482501, 0.21106622, 0.20026337],     
+                     std = [0.3038128, 0.27170245, 0.26680432])
+    ])
+
 data = dict(
     train=dict(
         dataset = dict(       
             type = datasets.CVPRMedSAMDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=pipeline_type.pipeline_2D),
+            pipeline=BasePipeline(train_transform).pipeline),
         sampler = dict(
             type = ClassBalancedSampler,
             num_sample_class =  1,
@@ -138,7 +158,7 @@ data = dict(
             type = datasets.CVPRMedSAMDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=pipeline_type.pipeline),
+            pipeline=BasePipeline(test_transform).pipeline),
         sampler = dict( type = DistributedSampler),
         dataloader_creator = dict( type= dataloaders.CVPRMedSAM_val_dataloader_creator)
         ),
@@ -147,7 +167,7 @@ data = dict(
             type = datasets.CVPRMedSAMDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=pipeline_type.pipeline),
+            pipeline=BasePipeline(test_transform).pipeline),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type= dataloaders.CVPRMedSAM_val_dataloader_creator)
     ),
@@ -156,7 +176,7 @@ data = dict(
             type = datasets.CVPRMedSAMInferenceDataset,
             # classes=classes,
             root_dir='/pub4/qasim/MedSAM/split_npzs_3chnl/',
-            pipeline=pipeline_type.pipeline_inference),
+            pipeline=BasePipeline(test_transform).pipeline),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type = basic_dataloader_creator)
     ),

@@ -28,6 +28,7 @@ MANIFEST
 work_dir/
 drawn_sample_paths.txt
 checkpoints/
+plots/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
