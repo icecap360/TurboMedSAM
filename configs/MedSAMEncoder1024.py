@@ -84,7 +84,7 @@ runner = dict(
     save_freq_iter = 1000,
     log_freq=5,
     resume_train = True,
-    resume_checkpoint = None,
+    checkpoint_path = None,
 )
 
 loss = losses.MedSAMLoss({
@@ -98,9 +98,8 @@ seed = 0
 
 data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
 pipeline_type = pipelines.CVPRMedSAMPipeline(
-    input_img_shape = 1024,
+    img_shape = 1024,
     target_mask_shape = 256,
-    bbox_shift = 5,
     normalize = False,
     means = [0.2482501, 0.21106622, 0.20026337],     stds = [0.3038128, 0.27170245, 0.26680432])
 data = dict(

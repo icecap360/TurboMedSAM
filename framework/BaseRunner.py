@@ -76,7 +76,7 @@ class BaseRunner(metaclass=ABCMeta):
                  use_amp = False,
                  grad_clip = None,
                  resume_train = False,
-                 resume_checkpoint = None):
+                 checkpoint_path = None):
         
         self.model = model
         self.optimizer = optimizer
@@ -97,7 +97,7 @@ class BaseRunner(metaclass=ABCMeta):
         self.use_amp = use_amp
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.use_amp)
         self.resume_train = resume_train
-        self.resume_checkpoint = resume_checkpoint
+        self.checkpoint_path = checkpoint_path
 
         # create work_dir
         if isinstance(work_dir, str):
@@ -126,12 +126,12 @@ class BaseRunner(metaclass=ABCMeta):
 
         self.loss.initialize(self.device)
 
-        assert (self.resume_train and self.resume_checkpoint) or not self.resume_train
+        assert (self.resume_train and self.checkpoint_path) or not self.resume_train
         if self.resume_train:
-            if not os.path.isabs(self.resume_checkpoint):
-                self.resume_checkpoint = os.path.join(self.work_dir, self.resume_checkpoint) 
-            assert os.path.exists(self.resume_checkpoint), 'Checkpoint must be a valid path'
-            self.resume(self.resume_checkpoint, self.distributed, map_location=self.device, 
+            if not os.path.isabs(self.checkpoint_path):
+                self.checkpoint_path = os.path.join(self.work_dir, self.checkpoint_path) 
+            assert os.path.exists(self.checkpoint_path), 'Checkpoint must be a valid path'
+            self.resume(self.checkpoint_path, self.distributed, map_location=self.device, 
                         resume_lr_scheduler=True)
 
     @property
@@ -329,10 +329,16 @@ class BaseRunner(metaclass=ABCMeta):
             model_state_dict = checkpoint 
         
         if distributed:
-            self.model.module.load_checkpoint(
-                model_state_dict,
-                strict = strict,
-                revise_keys = revise_keys)
+            if isinstance(self.model, nn.parallel.DistributedDataParallel):
+                self.model.module.load_checkpoint(
+                    model_state_dict,
+                    strict = strict,
+                    revise_keys = revise_keys)
+            else:
+                self.model.load_checkpoint(
+                    model_state_dict,
+                    strict = strict,
+                    revise_keys = revise_keys)
         else:
             self.model.load_checkpoint(
                 model_state_dict,

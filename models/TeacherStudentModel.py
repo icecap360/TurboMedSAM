@@ -10,6 +10,7 @@ class TeacherStudentModel(BaseModule):
         self,
         student: BaseModule,
         teacher: BaseModule,
+        apply_cutmix = False,
         student_image_size = None,
         teacher_image_size = None,
         init_cfg = None
@@ -17,6 +18,7 @@ class TeacherStudentModel(BaseModule):
         super().__init__(init_cfg)
         self.student = student
         self.teacher = teacher
+        self.applycutmix = apply_cutmix
         self.student_image_size = student_image_size
         self.teacher_image_size = teacher_image_size
         for param in self.teacher.parameters():

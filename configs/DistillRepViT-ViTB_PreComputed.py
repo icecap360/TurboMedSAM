@@ -61,9 +61,9 @@ runner = dict(
     save_freq_iter = 10000,
     log_freq = 5,
     resume_train = False,
-    # resume_checkpoint = 'epoch_1_2e-5lr_01042024.pth',
-    # resume_checkpoint = 'exception_02042024.pth',
-    resume_checkpoint = '/home/qasim/Projects/TurboMedSAM/work_dir/DistillRepViT-ViTB_PreComputed/epoch_2_20000.pth',
+    # checkpoint_path = 'epoch_1_2e-5lr_01042024.pth',
+    # checkpoint_path = 'exception_02042024.pth',
+    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/work_dir/DistillRepViT-ViTB_PreComputed/epoch_2_20000.pth',
 )
 
 loss = losses.DistillationLoss(
@@ -83,9 +83,8 @@ data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
 teacher_root = '/pub5/qasim/MedSAM/MedSAM1024/results'
 
 pipeline_type = pipelines.CVPRMedSAMPipeline(
-    input_img_shape=image_size,
+    img_shape=image_size,
     target_mask_shape=256,
-    bbox_shift=5,
     normalize=True,
     means = [0.2482501, 0.21106622, 0.20026337], 
     stds = [0.3038128, 0.27170245, 0.26680432]

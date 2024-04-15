@@ -10,6 +10,7 @@ import cv2
 import random
 import json  
 from torchvision import tv_tensors
+from torchvision.transforms import v2
 
 class CVPRMedSAMDataset(BaseDataset):
     """Face Landmarks dataset."""
@@ -82,6 +83,7 @@ class CVPRMedSAMDataset(BaseDataset):
             format=tv_tensors.BoundingBoxFormat.XYXY,
             requires_grad=False
             )
+        bboxes = v2.Resize((image.shape[1:]))(bboxes)
 
         if min(image.shape) > 3:
             meta['image_type'] = '3D'

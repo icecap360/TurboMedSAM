@@ -106,9 +106,9 @@ runner = dict(
     save_freq_iter = 10000,
     log_freq = 5,
     resume_train = False,
-    # resume_checkpoint = 'epoch_1_2e-5lr_01042024.pth',
-    # resume_checkpoint = 'exception_02042024.pth',
-    resume_checkpoint = '/home/qasim/Projects/TurboMedSAM/work_dir/DistillRepViT-ViTB_PreComputed/epoch_2_20000.pth',
+    # checkpoint_path = 'epoch_1_2e-5lr_01042024.pth',
+    # checkpoint_path = 'exception_02042024.pth',
+    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/work_dir/DistillRepViT-ViTB_PreComputed/epoch_2_20000.pth',
 )
 
 loss = losses.DistillationLoss(
@@ -126,14 +126,10 @@ seed = 0
 data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
 test_transform_student = v2.Compose(
     [
-        # v2.ToImage(),
-        v2.Resize(size=(image_size, image_size), antialias=True),
-        # v2.RandomHorizontalFlip(p=0.5),
-        v2.ToDtype(torch.float32, scale=True),
         v2.Normalize(mean = [0.2482501, 0.21106622, 0.20026337],     
                      std = [0.3038128, 0.27170245, 0.26680432])
     ])
-test_transform_teacher = v2.Compose(
+test_transform = v2.Compose(
     [
         # v2.ToImage(),
         v2.Resize(size=(image_size, image_size), antialias=True),
@@ -141,21 +137,10 @@ test_transform_teacher = v2.Compose(
         v2.ToDtype(torch.float32, scale=True)
     ])
 train_transform_student = v2.Compose(
-    [
-        v2.Resize(size=(image_size+256, image_size+256), antialias=True),
-        v2.RandomResizedCrop(size=(image_size, image_size), 
-                             scale=(0.5, 1.0), 
-                             ratio=(0.75, 1.3333),
-                             antialias=True),
-        v2.RandomHorizontalFlip(p=0.5),
-        # v2.RandAugment(num_ops=2,
-        #                magnitude=9),
-        # v2.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0),
-        v2.ToDtype(torch.float32, scale=True),
-        v2.Normalize(mean = [0.2482501, 0.21106622, 0.20026337],     
+    [v2.Normalize(mean = [0.2482501, 0.21106622, 0.20026337],     
                      std = [0.3038128, 0.27170245, 0.26680432])
     ])
-train_transform_teacher = v2.Compose(
+train_transform = v2.Compose(
     [
         v2.Resize(size=(image_size+256, image_size+256), antialias=True),
         v2.RandomResizedCrop(size=(image_size, image_size), 
@@ -168,8 +153,8 @@ train_transform_teacher = v2.Compose(
         # v2.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0),
         v2.ToDtype(torch.float32, scale=True)
     ])
-train_pipeline = pipelines.TeacherStudentPipeline(train_transform_student, train_transform_teacher)
-test_pipeline = pipelines.TeacherStudentPipeline(test_transform_student, test_transform_teacher)
+train_pipeline = pipelines.TeacherStudentPipeline(train_transform, student_transform=train_transform_student)
+test_pipeline = pipelines.TeacherStudentPipeline(test_transform, student_transform=test_transform_student)
 
 data = dict(
     train=dict(

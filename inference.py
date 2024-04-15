@@ -77,7 +77,7 @@ def main(args):
         torch.backends.cudnn.benchmark = True
 
     # init distributed env first, since logger depends on the dist info.
-    if not (cfg.compute['job_launcher']['type'] == 'none' and not torch.distributed.is_available()):
+    if not (cfg.compute['job_launcher']['type'] == 'none' and not torch.distributed.is_available()) and not torch.distributed.is_initialized():
         init_dist_custom(cfg.compute['job_launcher']['dist_params']['backend'], args.local_rank, args.local_world_size )
     rank, world_size = get_dist_info()
     distributed = (world_size != 1)
