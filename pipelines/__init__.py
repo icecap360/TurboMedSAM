@@ -1,2 +1,2 @@
-from .CVPRMedSAMPipeline_old import *
+from .CVPRMedSAMPipeline import *
 from .TeacherStudentPipeline import *
