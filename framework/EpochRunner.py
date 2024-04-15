@@ -67,7 +67,7 @@ class EpochBasedRunner(BaseRunner):
                  use_amp=compute['use_amp'],
                  grad_clip=optimizer.get('grad_clip'),
                  resume_train=runner['resume_train'],
-                 resume_checkpoint=runner.get('resume_checkpoint')
+                 checkpoint_path=runner.get('checkpoint_path')
                  )
 
     def train_epoch(self, data_loader: DataLoader):

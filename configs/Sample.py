@@ -56,7 +56,7 @@ runner = dict(
     save_freq_iter = 1000,
     log_freq=5,
     resume_train = True,
-    resume_checkpoint = 'epoch_2.pth',
+    checkpoint_path = 'epoch_2.pth',
 )
 loss = SampleLoss(
     loss_weight = {

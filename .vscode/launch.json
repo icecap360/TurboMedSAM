@@ -12,7 +12,7 @@
             "module":"torch.distributed.launch",
             // with args...
             "args":["--use_env","--nproc_per_node=3","--master_addr=127.0.0.1",
-            "--master_port=29502", "train.py", "DistillRepViT-ViTB_PreComputed.py"],
+            "--master_port=29501", "train.py", "CVPRMedSAMRepViTm11.py"],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -38,10 +38,9 @@
             "cwd": "${workspaceFolder}",
             "justMyCode": false,
             "console": "integratedTerminal",
-            "args": ["DistillRepViT-ViTB_PreComputed.py"]
+            "args": ["DistillRepViT-ViTB.py"]
             // "args": ["DistillRepViT-LiteMedSAM.py"]
             // "args": ["Sample.py"]
-
         },
 
         {
@@ -53,6 +52,30 @@
             "justMyCode": false,
             "console": "integratedTerminal",
             "args": ["DistillRepVit.py"]
+        },
+        {
+            "name": "Data Summary",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/data_summary.py",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "args": ["CVPRMedSAMRepViT.py"]
+        },
+
+
+        {
+            "name": "Val Distributed",
+            "type": "python",
+            "request": "launch",
+            // we launch a module...
+            "module":"torch.distributed.launch",
+            // with args...
+            "args":["--use_env","--nproc_per_node=3","--master_addr=127.0.0.1",
+            "--master_port=29502","val.py", "CVPRMedSAMRepViT.py"],
+            "console": "integratedTerminal",
+            "justMyCode": false
         }
     ]
 }
