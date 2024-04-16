@@ -112,9 +112,21 @@ def main(args):
         logger.info(f'Rank{rank}: GPU assigned: {gpu_id}')
 
     model = cfg.model
-    model.init_weights()
-    
     saver_cfg = deepcopy(cfg.saver)
+
+    if saver_cfg.get('checkpoint'):
+        state_dict = torch.load(saver_cfg.get('checkpoint'),
+                                map_location = torch.device('cpu'),)
+        if 'state_dict' in state_dict:
+            state_dict = state_dict['state_dict']
+        model.load_checkpoint(
+                state_dict,
+                strict = True,
+                revise_keys = [(r'^module.', ''), (r'^_orig_mod.', '')])
+        model.init_weights(state_dict)
+    else:
+        model.init_weights()
+    
     saver_type = saver_cfg.pop('type')
     saver = saver_type(work_dir, cfg.data['inference'], saver_cfg)
 

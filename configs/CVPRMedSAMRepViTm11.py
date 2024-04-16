@@ -9,6 +9,7 @@ import pipelines
 from torchvision import transforms
 import dataloaders
 from torchvision.transforms import v2
+import savers 
 
 img_size = 1024
 batch_size = 10
@@ -70,7 +71,7 @@ lr_scheduler = dict(
     )
 
 compute = dict(
-    gpu_ids = [0,1,2],
+    gpu_ids = [0,1,2,3],
     use_cpu = False,
     use_amp = True,
     mp_start_method = 'fork',
@@ -101,7 +102,7 @@ runner = dict(
     save_freq_iter = 10000,
     log_freq=5,
     resume_train = False,
-    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/checkpoints/CVPRMedSAMRepViT_epoch_3.pth',
+    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/checkpoints/CVPRMedSAMRepViTm11_epoch_3.pth',
 )
 
 loss = losses.MedSAMLoss({
@@ -157,10 +158,16 @@ data = dict(
         dataset = dict(       
             type = datasets.CVPRMedSAMInferenceDataset,
             # classes=classes,
-            root_dir='/pub4/qasim/MedSAM/split_npzs_3chnl/',
+            root_dir='/data/qasim/MedSAM/official_val',
             pipeline=pipeline_type.pipeline_inference),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type = basic_dataloader_creator)
     ),
 )
-
+saver = dict(
+    type = savers.CVPRMedSAMSaver,
+    directory = '/home/qasim/Projects/TurboMedSAM/work_dir/CVPRMedSAMRepViTm11/results',
+    checkpoint = '/home/qasim/Projects/TurboMedSAM/checkpoints/CVPRMedSAMRepViTm11_epoch_3.pth',
+    keys = ['mask'],
+    dtype= ['uint8']
+)

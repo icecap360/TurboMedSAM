@@ -147,7 +147,7 @@ data = dict(
 )
 
 saver = dict(
-    type = savers.CVPRMedSAMSaver,
+    type = savers.CVPRMedSAMEmbeddingSaver,
     directory = '/pub2/data/qasim/MedSAM1024A/resultsA',
     keys = ['embeddings']
 )

@@ -24,8 +24,8 @@
             // we launch a module...
             "module":"torch.distributed.launch",
             // with args...
-            "args":["--use_env","--nproc_per_node=6","--master_addr=127.0.0.1",
-            "--master_port=29502","inference.py", "MedSAMEncoder1024.py", "--save_result=True"],
+            "args":["--use_env","--nproc_per_node=4","--master_addr=127.0.0.1",
+            "--master_port=29502","inference.py", "CVPRMedSAMRepViTm11.py", "--save_result=True"],
             "console": "integratedTerminal",
             "justMyCode": false
         },
@@ -76,6 +76,17 @@
             "--master_port=29502","val.py", "CVPRMedSAMRepViT.py"],
             "console": "integratedTerminal",
             "justMyCode": false
-        }
-    ]
+        },
+
+        {
+            "name": "Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            // "args": ["CVPRMedSAMRepViT.py"]
+        },
+        ]
 }

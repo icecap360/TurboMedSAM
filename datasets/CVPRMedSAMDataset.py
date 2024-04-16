@@ -115,7 +115,21 @@ class CVPRMedSAMDataset(BaseDataset):
         return self.classes
 
 class CVPRMedSAMInferenceDataset(CVPRMedSAMDataset):
-
+    def __init__(self, root_dir, split_type, bbox_shift=5, pipeline=None, transform=None, input_transform=None, target_transform=None):
+        """
+        Arguments:
+            csv_file (string): Path to the csv file with annotations.
+            root_dir (string): Directory with all the images.
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        super(CVPRMedSAMDataset, self).__init__(split_type, pipeline, transform, input_transform, target_transform)
+        self.root_dir = root_dir
+        self.bbox_shift = bbox_shift
+        self.npz_dir = self.root_dir
+        self.npz_paths = glob.glob(os.path.join(self.npz_dir, "**/*.npz"), recursive=True)
+    def __len__(self):
+        return len(self.npz_paths)
     def __getitem__(self, idx):
         # if torch.is_tensor(idx):
         #     idx = idx.tolist()
@@ -128,8 +142,8 @@ class CVPRMedSAMInferenceDataset(CVPRMedSAMDataset):
         npz_path = self.npz_paths[idx]
         npz = np.load(npz_path, allow_pickle=True, mmap_mode="r")
         image = np.moveaxis(npz['imgs'],2,0)
-        bbox = tv_tensors.BoundingBoxes(npz['bbox'], 
-                                        canvas_size=image.shape[:2],
+        bbox = tv_tensors.BoundingBoxes(npz['boxes'], 
+                                        canvas_size=image.shape[1:],
                                         format=tv_tensors.BoundingBoxFormat.XYXY,
                                         requires_grad=False)
         meta = dict(
@@ -148,7 +162,6 @@ class CVPRMedSAMInferenceDataset(CVPRMedSAMDataset):
                                          "bbox": bbox},
                                          {},
                                         meta)    
-
 
 class CVPRMedSAMEncoderDataset(CVPRMedSAMDataset):
     def __init__(self, root_dir, split_type, subset_classes=None, pipeline=None, transform=None, input_transform=None, target_transform=None):
@@ -284,7 +297,7 @@ class CVPRMedSAMEncoderPreCompDataset(BaseDataset):
     def get_categories(self):
         return self.classes
     
-class CVPRMedSAMDatasetFFCVWrite(Dataset):
+class CVPRMedSAMDatasetFFCVWrite(CVPRMedSAMDataset):
     """Face Landmarks dataset."""
 
     def __init__(self, root_dir, split_type):
@@ -295,15 +308,13 @@ class CVPRMedSAMDatasetFFCVWrite(Dataset):
             transform (callable, optional): Optional transform to be applied
                 on a sample.
         """
+        super(Dataset, self).__init__()
         self.split_type = split_type
         self.root_dir = root_dir
         self.npz_dir = os.path.join(self.root_dir, self.split_type)
         self.classes = os.listdir(self.npz_dir)
         self.npz_paths = glob.glob(os.path.join(self.npz_dir, "**/*.npz"), recursive=True)
         
-    def __len__(self):
-        return len(self.npz_paths)
-
     def __getitem__(self, idx):
         # if torch.is_tensor(idx):
         #     idx = idx.tolist()
