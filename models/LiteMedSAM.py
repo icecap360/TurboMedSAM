@@ -98,9 +98,22 @@ class LiteMedSAM(BaseDetector):
             "iou": iou_predictions
         }
 
-    def init_weights(self):
-        if self.init_cfg is None:
+    def init_weights(self, state_dict=None, strict=True):
+        if self.init_cfg == None and state_dict == None:
             return
+        elif state_dict:
+            self.prompt_encoder.load_state_dict(
+                keep_keys(state_dict, "prompt_encoder", [(r"^prompt_encoder.", "")]),
+                strict= strict
+            )
+            self.mask_decoder.load_state_dict(
+                keep_keys(state_dict, "mask_decoder", [(r"^mask_decoder.", "")]),
+                strict=strict
+            )
+            self.image_encoder.load_state_dict(
+                keep_keys(state_dict, "image_encoder", [(r"^image_encoder.", "")]),
+                strict= strict
+            )
         elif 'pretrained' in self.init_cfg['type'].lower():
             if not 'checkpoint' in self.init_cfg.keys():
                 raise Exception('Missing checkpoint')  

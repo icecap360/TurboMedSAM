@@ -29,14 +29,17 @@ class BaseModule(nn.Module, metaclass=ABCMeta):
     def initialize(self):
         self.init_weights()
         
-    def init_weights(self):
-        if self.init_cfg is None:
+    def init_weights(self, state_dict=None, strict=True):
+        if self.init_cfg is None and state_dict == None:
             return
+        elif state_dict:
+            self.load_state_dict(state_dict, 
+                                 strict=strict)
         elif 'pretrained' in self.init_cfg['type'].lower():
             if not 'checkpoint' in self.init_cfg.keys():
                 raise Exception('Missing checkpoint')    
             self.load_state_dict(torch.load(self.init_cfg['checkpoint']), 
-                                 strict=self.init_cfg.get('strict') or True)
+                                 strict=strict)
         else:
             raise Exception('init_cfg is formatted incorrectly')
         
@@ -68,7 +71,7 @@ class BaseModule(nn.Module, metaclass=ABCMeta):
         # Keep metadata in state_dict
         state_dict._metadata = metadata
         
-        self.load_state_dict( state_dict, strict)
+        self.init_weights(state_dict, strict)
         return state_dict
     
     # def load_state_dict(self, state_dict, strict: bool = True):

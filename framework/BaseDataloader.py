@@ -15,6 +15,7 @@ import random
 from copy import deepcopy
 from torchvision import transforms
 from .utils import create_object_from_params
+from torch.utils.data import default_collate
 
 def create_dataloader(data_settings, compute_settings, seed, is_distributed, split_type, start_idx=0):
     
@@ -58,23 +59,23 @@ def create_dataloader(data_settings, compute_settings, seed, is_distributed, spl
                            **dataloader_settings)
 
 class BaseDataLoader(torch.utils.data.DataLoader):
-    def __init__(self, dataset, batch_size, sampler, pin_memory, workers_per_gpu, prefetch_factor, persistent_workers, init_fn, name='Basic', drop_last=False):
+    def __init__(self, dataset, batch_size, sampler, pin_memory, workers_per_gpu, prefetch_factor, persistent_workers, init_fn, collate_fn=default_collate, name='Basic', drop_last=False):
         self.name = name
         super().__init__(dataset, 
-                            batch_size=batch_size,
-                            sampler=sampler,
-                            pin_memory=pin_memory,
-                            drop_last=drop_last,
-                            num_workers=workers_per_gpu, # I don't support DataParallel, I use 1 GPU in the nonparallel case so num_gpus is always 1
-                            prefetch_factor=prefetch_factor,
-                            persistent_workers=persistent_workers,
-                            worker_init_fn=init_fn,
-                        #  collate_fn=partial(collate, samples_per_gpu=compute_settings["samples_per_gpu"],)
+                        batch_size=batch_size,
+                        sampler=sampler,
+                        pin_memory=pin_memory,
+                        drop_last=drop_last,
+                        num_workers=workers_per_gpu, # I don't support DataParallel, I use 1 GPU in the nonparallel case so num_gpus is always 1
+                        prefetch_factor=prefetch_factor,
+                        persistent_workers=persistent_workers,
+                        worker_init_fn=init_fn,
+                        collate_fn=collate_fn
         )
     def get_name(self):
         return self.name
     
-def basic_dataloader_creator(data_settings, compute_settings, seed, is_distributed, split_type, batch_size, start_idx=0, drop_last=False,name='Basic'):
+def basic_dataloader_creator(data_settings, compute_settings, seed, is_distributed, split_type, batch_size, start_idx=0, collate_fn = default_collate, drop_last=False,name='Basic'):
     if is_distributed:
         rank, world_size = get_dist_info()
     else:
@@ -108,6 +109,9 @@ def basic_dataloader_creator(data_settings, compute_settings, seed, is_distribut
     #                     seed=seed,
     #                     **sampler_settings)
 
+    if data_settings[split_type].get('collate_fn'):
+        collate_fn = data_settings[split_type].get('collate_fn')
+        
     return BaseDataLoader(dataset, 
                         batch_size=batch_size,
                         sampler=sampler,
@@ -115,10 +119,10 @@ def basic_dataloader_creator(data_settings, compute_settings, seed, is_distribut
                         workers_per_gpu=compute_settings["workers_per_gpu"], # I don't support DataParallel, I use 1 GPU in the nonparallel case so num_gpus is always 1
                         prefetch_factor=compute_settings["prefetch_factor"],
                         persistent_workers=compute_settings["persistent_workers"],
-                        init_fn=init_fn,
-                        name=name,
-                        drop_last=drop_last
-                    #  collate_fn=partial(collate, samples_per_gpu=compute_settings["samples_per_gpu"],)
+                        init_fn = init_fn,
+                        name = name,
+                        drop_last = drop_last,
+                        collate_fn = collate_fn
     )
 
 class ListDataLoader():
@@ -138,8 +142,8 @@ class ListDataLoader():
         else:
             raise StopIteration
 
-def basic_val_dataloader_creator(data_settings, compute_settings, seed, is_distributed, split_type, batch_size, name='Basic', drop_last=False, start_idx=0):
-        loaders = [basic_dataloader_creator(data_settings, compute_settings, seed, is_distributed, split_type, batch_size, name=name, drop_last=drop_last )]
+def basic_val_dataloader_creator(data_settings, compute_settings, seed, is_distributed, split_type, batch_size, collate_fn = default_collate, name='Basic', drop_last=False, start_idx=0):
+        loaders = [basic_dataloader_creator(data_settings, compute_settings, seed, is_distributed, split_type, batch_size, collate_fn=collate_fn, name=name, drop_last=drop_last )]
         return ListDataLoader(loaders)
 
 def worker_init_fn(worker_id, num_workers, rank, seed):

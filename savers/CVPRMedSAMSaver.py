@@ -10,10 +10,11 @@ import cv2
 import random
 import shutil
 import multiprocessing as mp
+import torchvision.transforms as T
 
-__all__ = ['CVPRMedSAMSaver']
+__all__ = ['CVPRMedSAMEmbeddingSaver', 'CVPRMedSAMSaver']
 
-class CVPRMedSAMSaver(BaseSaver):
+class CVPRMedSAMEmbeddingSaver(BaseSaver):
     """Face Landmarks dataset."""
 
     def __init__(self, work_dir, data_settings, saver_settings):
@@ -32,6 +33,8 @@ class CVPRMedSAMSaver(BaseSaver):
             
     def copy_dir_structure(self, root_data_dir, result_dir):
         for f in os.listdir(root_data_dir):
+            if os.path.isfile(f):
+                continue
             has_npz = np.any(list(map(lambda x: '.npz' in x, os.listdir(os.path.join(root_data_dir, f)) )))
             if has_npz:
                 os.makedirs(os.path.join(result_dir, f), exist_ok=True)
@@ -70,3 +73,48 @@ class CVPRMedSAMSaver(BaseSaver):
         new_path = os.path.join(self.result_dir, 
                                 path.replace(self.root_data_dir, ''))
         np.savez_compressed(new_path, **new_pred)
+
+
+class CVPRMedSAMSaver(BaseSaver):
+    """Face Landmarks dataset."""
+
+    def __init__(self, work_dir, data_settings, saver_settings):
+        """
+        Arguments:
+            csv_file (string): Path to the csv file with annotations.
+            root_dir (string): Directory with all the images.
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        super().__init__(work_dir, data_settings, saver_settings)
+        self.root_data_dir = data_settings['dataset']['root_dir']
+        shutil.rmtree(os.path.abspath(self.result_dir), ignore_errors=True)
+        self.copy_dir_structure(self.root_data_dir, 
+                                self.result_dir)
+            
+    def copy_dir_structure(self, root_data_dir, result_dir):
+        has_npz = np.any(list(map(lambda x: '.npz' in x, os.listdir(os.path.join(root_data_dir)) )))
+        if has_npz:
+            return
+        for f in os.listdir(root_data_dir):
+            has_npz = np.any(list(map(lambda x: '.npz' in x, os.listdir(os.path.join(root_data_dir, f)) )))
+            if has_npz:
+                os.makedirs(os.path.join(result_dir, f), exist_ok=True)
+            else:
+                self.copy_dir_structure(os.path.join(root_data_dir, f), os.path.join(result_dir, f))
+        
+    def save(self, inputs, preds):
+        paths = inputs['meta']['npz_path']
+        for i in range(len(paths)):
+            path = paths[i]
+            new_pred = {}
+            
+            pred = preds['mask'][i]
+            ori_image_shape = inputs['meta']['original_shape'][i]
+            pred = T.Resize((ori_image_shape[1:]))(pred)
+            pred = pred.type(torch.uint8)
+            
+            new_pred['segs'] = pred.half().cpu().detach().numpy()
+            new_path = os.path.join(self.result_dir, 
+                                    path.replace(self.root_data_dir, ''))
+            np.savez_compressed(new_path, **new_pred)

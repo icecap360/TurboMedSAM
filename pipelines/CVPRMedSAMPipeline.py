@@ -48,14 +48,15 @@ class CVPRMedSAMPipeline:
             meta
         )
     
-    def pipeline_inference(self, inputs, meta):
+    def pipeline_inference(self, inputs, outputs, meta):
         img_padded, _ = self.img_transform(
             inputs['image'],
             self.resize_img_transform, 
             self.normalize_transform)
+        bboxes = self.resize_img_transform(inputs["bbox"])
         return  {"image" : np.float32(img_padded),
-                'bbox' : np.float32(inputs["bbox"][None, None, ...]),
-                "meta"  : meta}
+                'bbox' : np.float32(bboxes[None, None, ...]),
+                "meta"  : meta}, outputs
     
     def pipeline_encoder(self, inputs, outputs, meta):
         img_padded, _ = self.img_transform(

@@ -109,7 +109,7 @@ class ViTMedSAM(BaseModule):
         )
 
     def forward(self, data_batch):
-        x = data_batch['image']
+        x = data_batch
         x = self.patch_embed(x)
         if self.pos_embed is not None:
             x = x + self.pos_embed
@@ -119,7 +119,7 @@ class ViTMedSAM(BaseModule):
 
         x = self.neck(x.permute(0, 3, 1, 2))
 
-        return {"embeddings": x}
+        return x
 
 # From https://github.com/facebookresearch/detectron2/blob/main/detectron2/layers/batch_norm.py # noqa
 # Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa

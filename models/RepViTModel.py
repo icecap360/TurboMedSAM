@@ -358,9 +358,14 @@ class RepViTModel(BaseModule):
             return {'embeddings': x}
         else:
             return x
-    def init_weights(self):
-        if self.init_cfg is None:
+    def init_weights(self, state_dict=None, strict=True):
+        if self.init_cfg == None and state_dict==None:
             return
+        elif state_dict:
+            self.load_state_dict(
+                        keep_keys(state_dict,"module.",
+                                  [(r"^module.", "")]), 
+                        strict= strict)
         elif 'pretrained' in self.init_cfg['type'].lower():
             if not 'checkpoint' in self.init_cfg.keys():
                 raise Exception('Missing checkpoint')   
