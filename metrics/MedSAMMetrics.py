@@ -12,9 +12,10 @@ class MedSAMMetrics(BaseMetric):
         self.dice_metric = monai.metrics.DiceMetric()
         self.NSD_metric = monai.metrics.SurfaceDiceMetric(class_thresholds)
     def get_metrics(self, pred, target, device) -> dict:
+        preds= (torch.sigmoid(pred['logits'])>0.5).type(torch.uint8)
         return {
-            'normalized_surface_density': torch.mean(self.NSD_metric(torch.sigmoid(pred['logits']), target['mask'])),
-            'dice': torch.mean(self.dice_metric(torch.sigmoid(pred['logits']), target['mask']).reshape(-1)),
+            'normalized_surface_density': torch.mean(self.NSD_metric(preds, target['mask']).reshape(-1)),
+            'dice': torch.mean(self.dice_metric(preds, target['mask']).reshape(-1)),
         }
 
 

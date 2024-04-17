@@ -30,9 +30,12 @@ def CVPRMedSAM_val_dataloader_creator(data_settings, compute_settings, seed, is_
     dataset_type = dataset_settings.pop("type")
     sampler_settings = data_settings[split_type]["sampler"]
     sampler_type = sampler_settings.pop('type')
-        
+    
     classes = get_MedSAM_classes(dataset_settings['root_dir'],
                                         split_type)
+    if dataset_settings.get('subset_classes'):
+        classes = dataset_settings.pop('subset_classes')
+        
     loaders = []
     for cat in classes:
         dataset_cat = dataset_type(
