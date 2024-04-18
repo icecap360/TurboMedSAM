@@ -6,7 +6,7 @@ from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_crea
 import losses
 import metrics
 import pipelines
-from torchvision import transforms
+import transforms
 from torchvision.transforms import v2
 import dataloaders
 from functools import partial
@@ -71,8 +71,8 @@ lr_scheduler = dict(
     warmup_by_epoch = True,
     warmup_epochs = 4,
     warmup = 'constant_value',
-    warmup_iters = 75000,
-    warmup_value = 8e-5
+    warmup_iters = 40000,
+    warmup_value = 4e-5
     )
 
 compute = dict(
@@ -138,7 +138,7 @@ test_transform = v2.Compose(
     ])
 train_transform_student = v2.Compose(
     [v2.Normalize(mean = [0.2482501, 0.21106622, 0.20026337],     
-                     std = [0.3038128, 0.27170245, 0.26680432])
+                std = [0.3038128, 0.27170245, 0.26680432])
     ])
 train_transform = v2.Compose(
     [
@@ -148,12 +148,23 @@ train_transform = v2.Compose(
                              ratio=(0.75, 1.3333),
                              antialias=True),
         v2.RandomHorizontalFlip(p=0.5),
+        v2.RandomVerticalFlip(p=0.5),
         # v2.RandAugment(num_ops=2,
         #                magnitude=9),
         # v2.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0),
         v2.ToDtype(torch.float32, scale=True)
     ])
-train_pipeline = pipelines.TeacherStudentPipeline(train_transform, student_transform=train_transform_student)
+
+train_collate_transforms = [transforms.MixPatch(1.0, 256),
+    transforms.NoLabelCutMix(alpha=1.0)]
+train_collate_functionals = [transforms.MixPatchFunctional,
+    transforms.NoLabelCutMixFunctional]
+
+train_pipeline = pipelines.TeacherStudentPipeline(
+    train_transform, 
+    student_transform=train_transform_student, 
+    collate_transforms=train_collate_transforms,
+    collate_functionals=train_collate_functionals)
 test_pipeline = pipelines.TeacherStudentPipeline(test_transform, student_transform=test_transform_student)
 
 data = dict(
@@ -168,6 +179,7 @@ data = dict(
             num_sample_class =  1,
             subset_classes = None,
             ),
+        collate_fn = train_pipeline.collate_fn,
         dataloader_creator = dict( type= basic_dataloader_creator)
         ),
     val=dict(
