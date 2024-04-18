@@ -1,0 +1,66 @@
+MedSAMLite
+
+XRay-008 - 
+    loss_dice: 0.052511, loss_ce: 0.024131, loss_iou: 0.011316, 
+    total loss: 0.08795825392007828, 
+    normalized_surface_density: 0.973442, 
+    dice: 0.937358
+
+OCT - 
+    loss_dice: 0.204722, loss_ce: 0.001493, loss_iou: 0.055037, 
+    total loss: 0.261251300573349, 
+    normalized_surface_density: 0.995731,
+    dice: 0.760558
+
+Endoscopy-007 - 
+    loss_dice: 0.076578, loss_ce: 0.034093, loss_iou: 0.009381, 
+    total loss: 0.12005087733268738, 
+    normalized_surface_density: 0.966928,
+    dice: 0.905908,
+
+Mammography-003 - 
+    loss_dice: 0.219345, loss_ce: 0.093462, loss_iou: 0.058687,
+    total loss: 0.3714938759803772
+    normalized_surface_density: 0.772513
+    dice: 0.745240,
+
+Microscopy-004 
+    loss_dice: 0.236919, loss_ce: 0.003601, loss_iou: 0.044924,
+    total loss: 0.28544315695762634
+    normalized_surface_density: 0.970500,
+    dice: 0.723017,
+
+Fundus-001 
+    loss_dice: 0.082462, loss_ce: 0.006294, loss_iou: 0.018005,
+    total loss: 0.1067604199051857
+    normalized_surface_density: 0.976087,
+    dice: 0.900672,
+
+Dermoscopy-006 
+    loss_dice: 0.052049, loss_ce: 0.069975, loss_iou: 0.006605
+    total loss: 0.12862902879714966
+    normalized_surface_density: 0.831998,dice: 0.933640,
+
+CT-005 
+    loss_dice: 0.249419, loss_ce: 0.033316, loss_iou: 0.071500
+    total loss: 0.3542345464229584
+    normalized_surface_density: 0.873395,
+    dice: 0.714634,
+
+US 
+    loss_dice: 0.062659, loss_ce: 0.090239, loss_iou: 0.009055,
+    total loss: 0.16195355355739594
+    normalized_surface_density: 0.700448,
+    dice: 0.921033,
+
+MR-009 
+    loss_dict - loss_dice: 0.219757, loss_ce: 0.016855, loss_iou: 0.054827, 
+    total loss: 0.2914385199546814
+    normalized_surface_density: 0.883212,
+    dice: 0.747084,
+
+PET
+    loss_dice: 0.274219, loss_ce: 0.002671, loss_iou: 0.098740,
+    total loss: 0.37563037872314453
+    normalized_surface_density: 0.977691,
+    dice: 0.694844,

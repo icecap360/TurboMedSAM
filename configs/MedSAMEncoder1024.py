@@ -19,7 +19,8 @@ encoder_num_heads=12
 encoder_global_attn_indexes=[2, 5, 8, 11]
 prompt_embed_dim = 256
 vit_patch_size = 16
-model = models.ViTMedSAM(
+model = models.ViT(
+        distillation=True,
         depth=encoder_depth,
         embed_dim=encoder_embed_dim,
         img_size=image_size,
@@ -146,7 +147,7 @@ data = dict(
 )
 
 saver = dict(
-    type = savers.CVPRMedSAMSaver,
+    type = savers.CVPRMedSAMEmbeddingSaver,
     directory = '/pub5/qasim/MedSAM/MedSAM1024A/resultsA',
     keys = ['embeddings'],
     dtype= ['float16']

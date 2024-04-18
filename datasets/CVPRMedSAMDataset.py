@@ -57,7 +57,10 @@ class CVPRMedSAMDataset(BaseDataset):
         meta = dict(
             idx=idx,
             npz_path = npz_path,
-            original_shape = image.shape,
+            original_shape = dict(
+                C=image.shape[0],
+                L= image.shape[1],
+                W = image.shape[2]),
             modality = self.get_modality(npz_path)
         )
         
@@ -96,9 +99,10 @@ class CVPRMedSAMDataset(BaseDataset):
                                         meta) 
     
     def get_modality(self, path:str):
-        path = path.replace(self.npz_dir, '')
-        if path[0] == '/':
-            path = path[1:]
+        path = os.path.relpath(path, self.npz_dir)
+        # path = path.replace(self.npz_dir, '')
+        # if path[0] == '/':
+        #     path = path[1:]
         return os.path.normpath(path).split(os.sep)[0]
 
     def get_cat2indices(self):
@@ -115,7 +119,21 @@ class CVPRMedSAMDataset(BaseDataset):
         return self.classes
 
 class CVPRMedSAMInferenceDataset(CVPRMedSAMDataset):
-
+    def __init__(self, root_dir, split_type, bbox_shift=5, pipeline=None, transform=None, input_transform=None, target_transform=None):
+        """
+        Arguments:
+            csv_file (string): Path to the csv file with annotations.
+            root_dir (string): Directory with all the images.
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        super(CVPRMedSAMDataset, self).__init__(split_type, pipeline, transform, input_transform, target_transform)
+        self.root_dir = root_dir
+        self.bbox_shift = bbox_shift
+        self.npz_dir = self.root_dir
+        self.npz_paths = glob.glob(os.path.join(self.npz_dir, "**/*.npz"), recursive=True)
+    def __len__(self):
+        return len(self.npz_paths)
     def __getitem__(self, idx):
         # if torch.is_tensor(idx):
         #     idx = idx.tolist()
@@ -127,15 +145,20 @@ class CVPRMedSAMInferenceDataset(CVPRMedSAMDataset):
         
         npz_path = self.npz_paths[idx]
         npz = np.load(npz_path, allow_pickle=True, mmap_mode="r")
+        print(npz['imgs'].shape, npz_path)
         image = np.moveaxis(npz['imgs'],2,0)
-        bbox = tv_tensors.BoundingBoxes(npz['bbox'], 
-                                        canvas_size=image.shape[:2],
+        bbox = tv_tensors.BoundingBoxes(npz['boxes'], 
+                                        canvas_size=image.shape[1:],
                                         format=tv_tensors.BoundingBoxFormat.XYXY,
                                         requires_grad=False)
+        
         meta = dict(
             idx=idx,
             npz_path = npz_path,
-            original_shape = image.shape,
+            original_shape = dict(
+                C=image.shape[0],
+                L= image.shape[1],
+                W = image.shape[2]),
             modality = self.get_modality(npz_path)
         )
         if min(image.shape) > 3:
@@ -148,7 +171,6 @@ class CVPRMedSAMInferenceDataset(CVPRMedSAMDataset):
                                          "bbox": bbox},
                                          {},
                                         meta)    
-
 
 class CVPRMedSAMEncoderDataset(CVPRMedSAMDataset):
     def __init__(self, root_dir, split_type, subset_classes=None, pipeline=None, transform=None, input_transform=None, target_transform=None):
@@ -187,7 +209,10 @@ class CVPRMedSAMEncoderDataset(CVPRMedSAMDataset):
         meta = dict(
             idx=idx,
             npz_path = npz_path,
-            original_shape = image.shape,
+            original_shape = dict(
+                C=image.shape[0],
+                L= image.shape[1],
+                W = image.shape[2]),
             modality = self.get_modality(npz_path)
         )
         if min(image.shape) > 3:
@@ -247,7 +272,10 @@ class CVPRMedSAMEncoderPreCompDataset(BaseDataset):
         meta = dict(
             idx=idx,
             npz_path = npz_path,
-            original_shape = image.shape,
+            original_shape = dict(
+                C=image.shape[0],
+                L= image.shape[1],
+                W = image.shape[2]),
             modality = self.get_modality(npz_path)
         )
 
@@ -268,7 +296,10 @@ class CVPRMedSAMEncoderPreCompDataset(BaseDataset):
                                         meta)    
     
     def get_modality(self, path:str):
-        path = path.replace(self.npz_dir, '')
+        path = os.path.relpath(path, self.npz_dir)
+        # path = path.replace(self.npz_dir, '')
+        # if path[0] == '/':
+        #     path = path[1:]
         return os.path.normpath(path).split(os.sep)[0]
 
     def get_cat2indices(self):
@@ -284,7 +315,7 @@ class CVPRMedSAMEncoderPreCompDataset(BaseDataset):
     def get_categories(self):
         return self.classes
     
-class CVPRMedSAMDatasetFFCVWrite(Dataset):
+class CVPRMedSAMDatasetFFCVWrite(CVPRMedSAMDataset):
     """Face Landmarks dataset."""
 
     def __init__(self, root_dir, split_type):
@@ -295,15 +326,13 @@ class CVPRMedSAMDatasetFFCVWrite(Dataset):
             transform (callable, optional): Optional transform to be applied
                 on a sample.
         """
+        super(Dataset, self).__init__()
         self.split_type = split_type
         self.root_dir = root_dir
         self.npz_dir = os.path.join(self.root_dir, self.split_type)
         self.classes = os.listdir(self.npz_dir)
         self.npz_paths = glob.glob(os.path.join(self.npz_dir, "**/*.npz"), recursive=True)
         
-    def __len__(self):
-        return len(self.npz_paths)
-
     def __getitem__(self, idx):
         # if torch.is_tensor(idx):
         #     idx = idx.tolist()
@@ -326,7 +355,10 @@ class CVPRMedSAMDatasetFFCVWrite(Dataset):
         meta = dict(
             idx=idx,
             npz_path = npz_path,
-            original_shape = image.shape,
+            original_shape = dict(
+                C=image.shape[0],
+                L= image.shape[1],
+                W = image.shape[2]),
             modality = self.get_modality(npz_path)
         )
 
@@ -337,10 +369,13 @@ class CVPRMedSAMDatasetFFCVWrite(Dataset):
             meta['image_type'] = '2D'
 
         return image, target, json.dumps(meta, default=int)
-
-    def get_modality(self, path:str):
-        path = path.replace(self.npz_dir, '')
-        return os.path.normpath(path).split(os.sep)[0]
     
+    def get_modality(self, path:str):
+        path = os.path.relpath(path, self.npz_dir)
+        # path = path.replace(self.npz_dir, '')
+        # if path[0] == '/':
+        #     path = path[1:]
+        return os.path.normpath(path).split(os.sep)[0]
+
 def get_MedSAM_classes(root_dir, split_type):
     return os.listdir(os.path.join(root_dir, split_type))

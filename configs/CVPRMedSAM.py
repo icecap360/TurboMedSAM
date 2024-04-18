@@ -8,33 +8,38 @@ import metrics
 import pipelines
 from torchvision import transforms
 import dataloaders
+from functools import partial
+import savers
 
+batch_size = 2
+image_size = 1024
+encoder_embed_dim=768
+encoder_depth=12
+encoder_num_heads=12
+encoder_global_attn_indexes=[2, 5, 8, 11]
+prompt_embed_dim = 256
+vit_patch_size = 16
 model = models.LiteMedSAM(
-        settings=dict(
-            image_encoder=dict(
-                img_size=256,
-                in_chans=3,
-                embed_dims=[
-                    64, ## (64, 256, 256)
-                    128, ## (128, 128, 128)
-                    160, ## (160, 64, 64)
-                    320 ## (320, 64, 64) 
-                ],
-                depths=[2, 2, 6, 2],
-                num_heads=[2, 4, 5, 10],
-                window_sizes=[7, 7, 14, 7],
-                mlp_ratio=4.,
-                drop_rate=0.,
-                drop_path_rate=0.0,
-                use_checkpoint=False,
-                mbconv_expand_ratio=4.0,
-                local_conv_size=3,
-                layer_lr_decay=0.8
+        image_encoder=models.ViT(
+                distillation=False,
+                depth=encoder_depth,
+                embed_dim=encoder_embed_dim,
+                img_size=image_size,
+                mlp_ratio=4,
+                norm_layer=partial(torch.nn.LayerNorm, eps=1e-6),
+                num_heads=encoder_num_heads,
+                patch_size=vit_patch_size,
+                qkv_bias=True,
+                use_rel_pos=True,
+                global_attn_indexes=encoder_global_attn_indexes,
+                window_size=14,
+                out_chans=prompt_embed_dim
                 ),
+        settings=dict(
             prompt_encoder=dict(
                 embed_dim=256,
-                image_embedding_size=(64, 64),
-                input_image_size=(256, 256),
+                image_embedding_size=(image_size//vit_patch_size, image_size // vit_patch_size),
+                input_image_size=(image_size, image_size),
                 mask_in_chans=16
                 ),
             mask_decoder=dict(
@@ -50,31 +55,37 @@ model = models.LiteMedSAM(
             )
         )
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
-grad_clip = dict(max_norm=35, norm_type=2)
-lr_scheduler = BaseScheduler(
-    regular_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-            optimizer,
+optimizer = dict(
+    optimizer = dict(
+        type = torch.optim.AdamW,
+        lr=1e-3*(batch_size*3/256), weight_decay=0.01),
+    grad_clip = dict(max_norm=0.2, norm_type=2)
+)
+lr_scheduler = dict(
+    type = BaseScheduler,
+    regular_scheduler = dict(
+            type=torch.optim.lr_scheduler.MultiStepLR,
             gamma=0.1,
-            milestones=[48,96],
+            milestones=[2],
             verbose=True
         ),
-    optimizer=optimizer,
-    warmup=None,
-    warmup_iters=500,
-    warmup_ratio=0.1
-)
+    warmup_by_epoch = False,
+    warmup_epochs = 1,
+    warmup = 'constant_value',
+    warmup_iters = 10000,
+    warmup_value = 1e-5
+    )
 
 compute = dict(
-    gpu_ids = [0,1],
+    gpu_ids = [3],
     use_cpu = False,
     use_amp = False,
     mp_start_method = 'fork',
     opencv_num_threads=0,
     cudnn_benchmark=False,
     workers_per_gpu=2,
-    samples_per_gpu=8,
-    batch_size=8,
+    samples_per_gpu=batch_size,
+    batch_size=batch_size,
     pin_memory=False,
     prefetch_factor=2,
     broadcast_bn_buffer=True,
@@ -96,7 +107,7 @@ runner = dict(
     save_freq_iter = 1000,
     log_freq=5,
     resume_train = True,
-    checkpoint_path = None,
+    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/checkpoints/medsam_vit_b.pth',
 )
 
 loss = losses.MedSAMLoss({
@@ -108,19 +119,20 @@ metric = metrics.MedSAMMetrics(class_thresholds=[5])
 custom_hooks = []
 seed = 0
 
-data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
+data_root = '/data/qasim/MedSAM/split_npzs_3chnl/'
 pipeline_type = pipelines.CVPRMedSAMPipeline(
-    img_shape=256,
+    img_shape=image_size,
     target_mask_shape=256,
     normalize=False,
-    means = [0.2482501, 0.21106622, 0.20026337],     stds = [0.3038128, 0.27170245, 0.26680432])
+    means = [0.2482501, 0.21106622, 0.20026337],     
+    stds = [0.3038128, 0.27170245, 0.26680432])
 data = dict(
     train=dict(
         dataset = dict(       
             type = datasets.CVPRMedSAMDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=pipeline_type.pipeline_2D_train),
+            pipeline=pipeline_type.pipeline_2D),
         sampler = dict(
             type = ClassBalancedSampler,
             num_sample_class =  1,
@@ -133,7 +145,7 @@ data = dict(
             type = datasets.CVPRMedSAMDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=pipeline_type.pipeline_train),
+            pipeline=pipeline_type.pipeline),
         sampler = dict( type = DistributedSampler),
         dataloader_creator = dict( type= dataloaders.CVPRMedSAM_val_dataloader_creator)
         ),
@@ -142,7 +154,7 @@ data = dict(
             type = datasets.CVPRMedSAMDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=pipeline_type.pipeline_train),
+            pipeline=pipeline_type.pipeline),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type= dataloaders.CVPRMedSAM_val_dataloader_creator)
     ),
@@ -150,10 +162,20 @@ data = dict(
         dataset = dict(       
             type = datasets.CVPRMedSAMInferenceDataset,
             # classes=classes,
-            root_dir='/pub4/qasim/MedSAM/split_npzs_3chnl/',
+            root_dir='/data/qasim/MedSAM/demo/',
             pipeline=pipeline_type.pipeline_inference),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type = basic_dataloader_creator)
     ),
 )
 
+
+saver = dict(
+    type = savers.CVPRMedSAMSaver,
+    # directory = '/home/qasim/Projects/TurboMedSAM/work_dir/CVPRMedSAMRepViTm11',
+    directory = '/home/qasim/Projects/TurboMedSAM/work_dir/CVPRMedSAM',
+
+    checkpoint = '/home/qasim/Projects/TurboMedSAM/checkpoints/medsam_vit_b.pth',
+    keys = ['logits'],
+    dtype= ['uint8']
+)

@@ -76,7 +76,6 @@ def main(args):
     logger.info(f'Rank{rank}: Set random seed to {seed}')
 
     model = cfg.model
-    model.init_weights()
     
     model = model.to(device)
         
@@ -114,10 +113,13 @@ def main(args):
             save_optimizer=True,
             )
     
-    if not os.path.isabs(runner.checkpoint_path):
-        runner.checkpoint_path = os.path.join(runner.work_dir, runner.checkpoint_path) 
-    assert os.path.exists(runner.checkpoint_path), 'Checkpoint must be a valid path'
-    runner.resume(runner.checkpoint_path, runner.distributed, map_location=runner.device, resume_lr_scheduler=True)
+    if isinstance(runner.checkpoint_path, str):
+        if not os.path.isabs(runner.checkpoint_path):
+            runner.checkpoint_path = os.path.join(runner.work_dir, runner.checkpoint_path) 
+        assert os.path.exists(runner.checkpoint_path), 'Checkpoint must be a valid path'
+        runner.resume(runner.checkpoint_path, runner.distributed, map_location=runner.device, resume_lr_scheduler=False, resume_optimizer=False)
+    else:
+        runner.model.init_weights()
     
     val_loader = create_dataloader(cfg.data,
                                 cfg.compute, 

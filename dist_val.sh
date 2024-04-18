@@ -1,6 +1,6 @@
-CONFIG=DistillRepViT-LiteMedSAM.py #CVPRMedSAMRepViT.py DistillRepViT-ViTB_PreComputed.py DistillRepViT-LiteMedSAM.py
-GPUS=3
-PORT=${PORT:-29502}
+CONFIG=CVPRMedSAMRepViTm15.py #CVPRMedSAMRepViTm11.py CVPRMedSAMRepViTm15.py  DistillRepViT-ViTB_PreComputed.py DistillRepViT-LiteMedSAM.py
+GPUS=1
+PORT=${PORT:-29503}
 # NNODES=${NNODES:-1}
 # NODE_RANK=${NODE_RANK:-0}
     # --nnodes=$NNODES \
@@ -13,7 +13,7 @@ python -m torch.distributed.launch \
     --use_env \
     --nproc_per_node=$GPUS \
     --master_port=$PORT \
-    $(dirname "$0")/train.py \
+    $(dirname "$0")/val.py \
     $CONFIG 
     # --seed 0 \
     # --launcher pytorch ${@:3}

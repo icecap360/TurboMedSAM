@@ -9,12 +9,14 @@ import pipelines
 from torchvision import transforms
 import dataloaders
 from torchvision.transforms import v2
+import savers 
 
 img_size = 1024
-batch_size = 10
+batch_size = 1
 
-model = models.LiteMedSAM(
-        encoder = models.repvit_model_m1_1(
+model = models.SegmentationModel(
+    model = models.LiteMedSAM(
+        image_encoder = models.repvit_model_m1_1(
             init_cfg={
                 "type": "pretrained",
                 "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/DistillRepViTm11-ViTB_epoch_1_20000.pth",
@@ -47,7 +49,7 @@ model = models.LiteMedSAM(
                 "no_image_encoder": True
             },
         )
-
+    )
 optimizer = dict(
     optimizer = dict(
         type = torch.optim.AdamW,
@@ -70,7 +72,7 @@ lr_scheduler = dict(
     )
 
 compute = dict(
-    gpu_ids = [0,1,2],
+    gpu_ids = [1,2,3],
     use_cpu = False,
     use_amp = True,
     mp_start_method = 'fork',
@@ -101,7 +103,7 @@ runner = dict(
     save_freq_iter = 10000,
     log_freq=5,
     resume_train = False,
-    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/checkpoints/CVPRMedSAMRepViT_epoch_3.pth',
+    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/checkpoints/RepViTm11_epoch4-Distill_ViTB_BasicAugmentation_epoch_1_20000.pth',
 )
 
 loss = losses.MedSAMLoss({
@@ -113,7 +115,7 @@ metric = metrics.MedSAMMetrics(class_thresholds=[5])
 custom_hooks = []
 seed = 0
 
-data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
+data_root = '/data/qasim/MedSAM/split_npzs_3chnl/'
 pipeline_type = pipelines.CVPRMedSAMPipeline(
     img_shape=img_size,
     target_mask_shape=256,
@@ -157,10 +159,16 @@ data = dict(
         dataset = dict(       
             type = datasets.CVPRMedSAMInferenceDataset,
             # classes=classes,
-            root_dir='/pub4/qasim/MedSAM/split_npzs_3chnl/',
+            root_dir='/data/qasim/MedSAM/official_val',
             pipeline=pipeline_type.pipeline_inference),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type = basic_dataloader_creator)
     ),
 )
-
+saver = dict(
+    type = savers.CVPRMedSAMSaver,
+    directory = '/home/qasim/Projects/TurboMedSAM/work_dir/CVPRMedSAMRepViTm11',
+    checkpoint = '/home/qasim/Projects/TurboMedSAM/checkpoints/RepViTm11_epoch4-Distill_ViTB_AggressiveAugmentation_epoch_2.pth',
+    keys = ['logits'],
+    dtype= ['uint8']
+)

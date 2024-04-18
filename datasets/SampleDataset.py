@@ -20,13 +20,13 @@ class SampleDataset(BaseDataset):
         """
         super().__init__(split_type, pipeline, input_transform, target_transform)
         
-        if split_type is 'train':
+        if split_type == 'train':
             self.data = np.linspace(0, 999, 1000) + np.random.normal(scale=0.1)
             self.label = np.linspace(0, 999, 1000) * 10
-        elif split_type is 'val':
+        elif split_type == 'val':
             self.data = np.linspace(1000, 1199, 200) + np.random.normal(scale=0.1)
             self.label = np.linspace(1000, 1199, 200) * 10
-        elif split_type is 'test':
+        elif split_type == 'test':
             self.data = np.linspace(2000, 2199, 200) + np.random.normal(scale=0.1)
             self.label = np.linspace(2000, 2199, 200) * 10
         

@@ -136,8 +136,8 @@ data = dict(
 )
 
 saver = dict(
-    type = savers.CVPRMedSAMSaver,
-    directory = os.path.join(work_dir, exp_name, 'results'),
+    type = savers.CVPRMedSAMEmbeddingSaver,
+    directory = work_dir,
     keys = ['embeddings']
 )
 

@@ -10,6 +10,8 @@ from progress.bar import Bar
 from framework import import_module, setup_multi_processes, init_dist_custom, get_dist_info, logger, read_cfg_str, get_device, init_random_seed, set_random_seed, create_dataloader, set_visible_devices, dict_to_device
 from copy import deepcopy
 import sys 
+import numpy as np
+
 
 # from framework import 
 
@@ -17,9 +19,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Inference on a detector')
     parser.add_argument('config', help='train config file path')
     parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument('--local_world_size', type=int, default = 1)    
     parser.add_argument('--save_results', type=bool, default=True)
     parser.add_argument('--benchmark', type=bool, default=True)
-    parser.add_argument('--local_world_size', type=int, default = 1)
     parser.add_argument(
         '--resume-from', help='the checkpoint file to resume from')
     parser.add_argument(
@@ -112,9 +114,21 @@ def main(args):
         logger.info(f'Rank{rank}: GPU assigned: {gpu_id}')
 
     model = cfg.model
-    model.init_weights()
-    
     saver_cfg = deepcopy(cfg.saver)
+
+    if saver_cfg.get('checkpoint'):
+        state_dict = torch.load(saver_cfg.get('checkpoint'),
+                                map_location = torch.device('cpu'),)
+        if 'state_dict' in state_dict:
+            state_dict = state_dict['state_dict']
+        model.load_checkpoint(
+                state_dict,
+                strict = True,
+                revise_keys = [(r'^module.', ''), (r'^_orig_mod.', '')])
+        model.init_weights(state_dict)
+    else:
+        model.init_weights()
+    
     saver_type = saver_cfg.pop('type')
     saver = saver_type(work_dir, cfg.data['inference'], saver_cfg)
 

@@ -31,7 +31,8 @@ model = models.TeacherStudentModel(
             distillation=True,
             num_classes=0
         ),
-    teacher=models.ViTMedSAM(
+    teacher=models.ViT(
+        distillation=True,
         depth=encoder_depth,
         embed_dim=encoder_embed_dim,
         img_size=image_size,
@@ -212,8 +213,8 @@ data = dict(
 )
 
 saver = dict(
-    type = savers.CVPRMedSAMSaver,
-    directory = os.path.join(work_dir, exp_name, 'results'),
+    type = savers.CVPRMedSAMEmbeddingSaver,
+    directory = work_dir,
     keys = ['embeddings']
 )
 ffcv_writer = dict(

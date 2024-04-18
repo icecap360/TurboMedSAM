@@ -129,13 +129,18 @@ class Logger:
         return message + '\n'
 
     def val_message(self, loader_name, iters, max_iters, loss_dict, total_loss, metrics_dict):
-        message = '\n Loader Type: {loader_name} - [{iters}/{max_iters}][{percent}] '.format(
+        
+        # message = '\n Loader Type: {loader_name} - [{iters}/{max_iters}][{percent}] '.format(
+        #     loader_name=loader_name,
+        #     iters=iters,
+        #     max_iters=max_iters,
+        #     percent=iters/max_iters,
+        # )
+        # message += 'loss_dict - '
+        
+        message = '\n{loader_name}\n'.format(
             loader_name=loader_name,
-            iters=iters,
-            max_iters=max_iters,
-            percent=iters/max_iters,
         )
-        message += 'loss_dict - '
 
         for (k,v) in loss_dict.items():
             if type(v) is torch.Tensor:
@@ -147,7 +152,7 @@ class Logger:
         message += '\ntotal loss: {total_loss}\n'.format(
             total_loss=total_loss
             )
-        message += 'metrics - '
+        # message += 'metrics - '
         for (k,v) in metrics_dict.items():
             if type(v)is torch.Tensor:
                 v = v.item()

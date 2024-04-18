@@ -2,32 +2,40 @@ import torch
 import models
 import datasets
 import os 
-from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_creator, DistributedSampler, BasePipeline
+from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_creator, DistributedSampler
 import losses
 import metrics
 import pipelines
 from torchvision import transforms
 import dataloaders
-from torchvision.transforms import v2
 
-img_size = 1024
-batch_size = 2
-
+batch_size = 36
 model = models.LiteMedSAM(
-        image_encoder = models.repvit_model_m1_5(
-            init_cfg={
-                "type": "pretrained",
-                "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/work_dir/DistillRepViT-ViTB_PreComputed/epoch_4.pth",
-                "strict": True
-            },
-            distillation=False,
-            num_classes=0
-        ),
         settings=dict(
+            image_encoder=dict(
+                img_size=256,
+                in_chans=3,
+                embed_dims=[
+                    64, ## (64, 256, 256)
+                    128, ## (128, 128, 128)
+                    160, ## (160, 64, 64)
+                    320 ## (320, 64, 64) 
+                ],
+                depths=[2, 2, 6, 2],
+                num_heads=[2, 4, 5, 10],
+                window_sizes=[7, 7, 14, 7],
+                mlp_ratio=4.,
+                drop_rate=0.,
+                drop_path_rate=0.0,
+                use_checkpoint=False,
+                mbconv_expand_ratio=4.0,
+                local_conv_size=3,
+                layer_lr_decay=0.8
+                ),
             prompt_encoder=dict(
                 embed_dim=256,
                 image_embedding_size=(64, 64),
-                input_image_size=(img_size, img_size),
+                input_image_size=(256, 256),
                 mask_in_chans=16
                 ),
             mask_decoder=dict(
@@ -40,12 +48,7 @@ model = models.LiteMedSAM(
                 iou_head_depth=3,
                 iou_head_hidden_dim=256,
                 )
-            ),
-            init_cfg={
-                "type": "pretrained",
-                "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/medsam_vit_b.pth",
-                "no_image_encoder": True
-            },
+            )
         )
 
 optimizer = dict(
@@ -70,22 +73,21 @@ lr_scheduler = dict(
     )
 
 compute = dict(
-    gpu_ids = [2],
+    gpu_ids = [0,1,2,3],
     use_cpu = False,
-    use_amp = True,
+    use_amp = False,
     mp_start_method = 'fork',
     opencv_num_threads=0,
     cudnn_benchmark=False,
-    workers_per_gpu=4,
+    workers_per_gpu=2,
     samples_per_gpu=batch_size,
     batch_size=batch_size,
-    pin_memory=True,
+    pin_memory=False,
     prefetch_factor=2,
     broadcast_bn_buffer=True,
-    persistent_workers=True,
-    find_unused_parameters = True,
+    persistent_workers=False,
     job_launcher = dict(
-        type='pytorch', #['none', 'pytorch', 'slurm', 'mpi'],
+        type='none', #['none', 'pytorch', 'slurm', 'mpi'],
         dist_params = dict(backend='nccl', port=29515)
         )
     )
@@ -94,14 +96,14 @@ work_dir = 'work_dir'
 exp_name = os.path.basename(__file__)[:-3]
 runner = dict(
     type= 'epoch',
-    max_epochs = 4, #300
+    max_epochs = 1, #300
     max_iters = 10000,
-    val_freq_epoch = 2,
+    val_freq_epoch = 1,
     val_freq_iter = 1000,
-    save_freq_iter = 10000,
+    save_freq_iter = 1000,
     log_freq=5,
-    resume_train = False,
-    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/checkpoints/RepViTm15_epoch3-Distill_ViTB_Precomputed_epoch_4.pth',
+    resume_train = True,
+    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/checkpoints/lite_medsam.pth',
 )
 
 loss = losses.MedSAMLoss({
@@ -115,12 +117,11 @@ seed = 0
 
 data_root = '/data/qasim/MedSAM/split_npzs_3chnl/'
 pipeline_type = pipelines.CVPRMedSAMPipeline(
-    img_shape=img_size,
+    img_shape=256,
     target_mask_shape=256,
-    normalize=True,
+    normalize=False,
     means = [0.2482501, 0.21106622, 0.20026337],     
     stds = [0.3038128, 0.27170245, 0.26680432])
-
 data = dict(
     train=dict(
         dataset = dict(       
@@ -157,7 +158,7 @@ data = dict(
         dataset = dict(       
             type = datasets.CVPRMedSAMInferenceDataset,
             # classes=classes,
-            root_dir='/pub4/qasim/MedSAM/split_npzs_3chnl/',
+            root_dir='/data/qasim/MedSAM/split_npzs_3chnl/',
             pipeline=pipeline_type.pipeline_inference),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type = basic_dataloader_creator)
