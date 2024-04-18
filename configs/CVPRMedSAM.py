@@ -9,8 +9,9 @@ import pipelines
 from torchvision import transforms
 import dataloaders
 from functools import partial
+import savers
 
-batch_size = 3
+batch_size = 2
 image_size = 1024
 encoder_embed_dim=768
 encoder_depth=12
@@ -19,7 +20,8 @@ encoder_global_attn_indexes=[2, 5, 8, 11]
 prompt_embed_dim = 256
 vit_patch_size = 16
 model = models.LiteMedSAM(
-        encoder=models.ViTMedSAM(
+        image_encoder=models.ViT(
+                distillation=False,
                 depth=encoder_depth,
                 embed_dim=encoder_embed_dim,
                 img_size=image_size,
@@ -36,8 +38,8 @@ model = models.LiteMedSAM(
         settings=dict(
             prompt_encoder=dict(
                 embed_dim=256,
-                image_embedding_size=(64, 64),
-                input_image_size=(256, 256),
+                image_embedding_size=(image_size//vit_patch_size, image_size // vit_patch_size),
+                input_image_size=(image_size, image_size),
                 mask_in_chans=16
                 ),
             mask_decoder=dict(
@@ -75,7 +77,7 @@ lr_scheduler = dict(
     )
 
 compute = dict(
-    gpu_ids = [0,1,2,3],
+    gpu_ids = [3],
     use_cpu = False,
     use_amp = False,
     mp_start_method = 'fork',
@@ -160,10 +162,20 @@ data = dict(
         dataset = dict(       
             type = datasets.CVPRMedSAMInferenceDataset,
             # classes=classes,
-            root_dir='/data/qasim/MedSAM/split_npzs_3chnl/',
+            root_dir='/data/qasim/MedSAM/demo/',
             pipeline=pipeline_type.pipeline_inference),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type = basic_dataloader_creator)
     ),
 )
 
+
+saver = dict(
+    type = savers.CVPRMedSAMSaver,
+    # directory = '/home/qasim/Projects/TurboMedSAM/work_dir/CVPRMedSAMRepViTm11',
+    directory = '/home/qasim/Projects/TurboMedSAM/work_dir/CVPRMedSAM',
+
+    checkpoint = '/home/qasim/Projects/TurboMedSAM/checkpoints/medsam_vit_b.pth',
+    keys = ['logits'],
+    dtype= ['uint8']
+)

@@ -11,10 +11,10 @@ import dataloaders
 from torchvision.transforms import v2
 
 img_size = 1024
-batch_size = 12
+batch_size = 2
 
 model = models.LiteMedSAM(
-        encoder = models.repvit_model_m1_5(
+        image_encoder = models.repvit_model_m1_5(
             init_cfg={
                 "type": "pretrained",
                 "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/work_dir/DistillRepViT-ViTB_PreComputed/epoch_4.pth",
@@ -70,7 +70,7 @@ lr_scheduler = dict(
     )
 
 compute = dict(
-    gpu_ids = [0,1,2],
+    gpu_ids = [2],
     use_cpu = False,
     use_amp = True,
     mp_start_method = 'fork',
@@ -101,7 +101,7 @@ runner = dict(
     save_freq_iter = 10000,
     log_freq=5,
     resume_train = False,
-    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/checkpoints/CVPRMedSAMRepViT_epoch_3.pth',
+    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/checkpoints/RepViTm15_epoch3-Distill_ViTB_Precomputed_epoch_4.pth',
 )
 
 loss = losses.MedSAMLoss({
@@ -113,7 +113,7 @@ metric = metrics.MedSAMMetrics(class_thresholds=[5])
 custom_hooks = []
 seed = 0
 
-data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
+data_root = '/data/qasim/MedSAM/split_npzs_3chnl/'
 pipeline_type = pipelines.CVPRMedSAMPipeline(
     img_shape=img_size,
     target_mask_shape=256,

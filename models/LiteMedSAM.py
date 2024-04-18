@@ -27,14 +27,16 @@ __all__ = ['LiteMedSAM']
 class LiteMedSAM(BaseDetector):
     def __init__(self,
                 settings,
-                encoder = None,
+                image_encoder = None,
+                prompt_encoder = None,
+                mask_decoder = None,
                 init_cfg=None,
                 ):
         
         super().__init__(init_cfg)
         
-        if encoder:
-            self.image_encoder = encoder
+        if image_encoder:
+            self.image_encoder = image_encoder
         else:
             encoder_cfg = settings['image_encoder']
             self.image_encoder = TinyViT(
@@ -53,27 +55,33 @@ class LiteMedSAM(BaseDetector):
                 layer_lr_decay=encoder_cfg['layer_lr_decay']
             )
         
-        decoder_cfg = settings['mask_decoder']
-        self.mask_decoder = MaskDecoder(
-            num_multimask_outputs=decoder_cfg['num_multimask_outputs'],
-            transformer=TwoWayTransformer(
-                depth=decoder_cfg['transformer_depth'],
-                embedding_dim=decoder_cfg['transformer_embedding_dim'],
-                mlp_dim=decoder_cfg['transformer_mlp_dim'],
-                num_heads=decoder_cfg['transformer_num_heads'],
-            ),
-            transformer_dim=decoder_cfg['transformer_dim'],
-            iou_head_depth=decoder_cfg['iou_head_depth'],
-            iou_head_hidden_dim=decoder_cfg['iou_head_hidden_dim'],
-        )
-        
-        prompt_encoder_cfg = settings['prompt_encoder']
-        self.prompt_encoder = PromptEncoder(
-            embed_dim=prompt_encoder_cfg['embed_dim'],
-            image_embedding_size=prompt_encoder_cfg['image_embedding_size'],
-            input_image_size=prompt_encoder_cfg['input_image_size'],
-            mask_in_chans=prompt_encoder_cfg['mask_in_chans']
+        if mask_decoder:
+            self.mask_decoder = mask_decoder
+        else:
+            decoder_cfg = settings['mask_decoder']
+            self.mask_decoder = MaskDecoder(
+                num_multimask_outputs=decoder_cfg['num_multimask_outputs'],
+                transformer=TwoWayTransformer(
+                    depth=decoder_cfg['transformer_depth'],
+                    embedding_dim=decoder_cfg['transformer_embedding_dim'],
+                    mlp_dim=decoder_cfg['transformer_mlp_dim'],
+                    num_heads=decoder_cfg['transformer_num_heads'],
+                ),
+                transformer_dim=decoder_cfg['transformer_dim'],
+                iou_head_depth=decoder_cfg['iou_head_depth'],
+                iou_head_hidden_dim=decoder_cfg['iou_head_hidden_dim'],
             )
+        
+        if prompt_encoder:
+            self.prompt_encoder = prompt_encoder
+        else:
+            prompt_encoder_cfg = settings['prompt_encoder']
+            self.prompt_encoder = PromptEncoder(
+                embed_dim=prompt_encoder_cfg['embed_dim'],
+                image_embedding_size=prompt_encoder_cfg['image_embedding_size'],
+                input_image_size=prompt_encoder_cfg['input_image_size'],
+                mask_in_chans=prompt_encoder_cfg['mask_in_chans']
+                )
                 
     def forward(self, input_params):
         image = input_params['image']

@@ -15,7 +15,7 @@ class CVPRMedSAMPipeline:
     def __init__(self, img_shape, target_mask_shape,
                  normalize, means, stds):
         self.img_shape = img_shape
-        self.resize_img_transform = v2.Resize((img_shape, img_shape))
+        self.resize_img_transform = v2.Resize((img_shape, img_shape), interpolation=InterpolationMode.BILINEAR)
         self.target_mask_shape = target_mask_shape
         self.resize_mask_transform = v2.Resize((target_mask_shape, target_mask_shape), interpolation=InterpolationMode.NEAREST)
         if normalize:
@@ -54,8 +54,8 @@ class CVPRMedSAMPipeline:
             self.resize_img_transform, 
             self.normalize_transform)
         bboxes = self.resize_img_transform(inputs["bbox"])
-        return  {"image" : np.float32(img_padded),
-                'bbox' : np.float32(bboxes[None, None, ...]),
+        return  {"image" : img_padded.type(torch.float32),
+                'bbox' : bboxes[None, None, ...].type(torch.float32),
                 "meta"  : meta}, outputs
     
     def pipeline_encoder(self, inputs, outputs, meta):
@@ -137,11 +137,11 @@ class CVPRMedSAMPipeline:
         #         # print('DA with flip upside down')
         
         return {
-            "image": np.float32(img_padded),
-            "bbox": np.float32(bboxes[None, None, ...]), # (B, 1, 4)
+            "image": img_padded.type(torch.float32),
+            "bbox": bboxes[None, None, ...].type(torch.float32), # (B, 1, 4)
             "meta": meta
         }, {
-            "mask": np.float32(gt2D[None, :,:]),
+            "mask": gt2D[None, :,:].type(torch.float32),
             # "original_mask": np.int64(gt[None, :,:]>0), # problem because this varies with instances!
             "meta": meta,
         }

@@ -274,3 +274,14 @@ def remove_keys(dictionary:dict, prefix:str, revise_keys = []):
             {re.sub(p, r, k): v
             for k, v in filtered_dict.items()})
     return filtered_dict
+
+def extract_idx(dictionary:dict, idx: int):
+    new_dict = dict()
+    for k,v in dictionary.items():
+        if isinstance(v, dict):
+            v = extract_idx(v, idx)
+        if not (isinstance(v, str) or isinstance(v, int)):
+            new_dict[k] = v
+        else:
+            new_dict[k] = v[idx]
+    return new_dict

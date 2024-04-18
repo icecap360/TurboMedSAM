@@ -1,5 +1,5 @@
-CONFIG=CVPRMedSAMLite.py #CVPRMedSAMRepViTm11.py CVPRMedSAMRepViTm15.py  DistillRepViT-ViTB_PreComputed.py DistillRepViT-LiteMedSAM.py
-GPUS=4
+CONFIG=CVPRMedSAMRepViTm15.py #CVPRMedSAMRepViTm11.py CVPRMedSAMRepViTm15.py  DistillRepViT-ViTB_PreComputed.py DistillRepViT-LiteMedSAM.py
+GPUS=1
 PORT=${PORT:-29503}
 # NNODES=${NNODES:-1}
 # NODE_RANK=${NODE_RANK:-0}

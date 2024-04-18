@@ -35,7 +35,8 @@ def CVPRMedSAM_val_dataloader_creator(data_settings, compute_settings, seed, is_
                                         split_type)
     if dataset_settings.get('subset_classes'):
         classes = dataset_settings.pop('subset_classes')
-        
+    classes.sort()
+    
     loaders = []
     for cat in classes:
         dataset_cat = dataset_type(

@@ -11,6 +11,7 @@ import random
 import shutil
 import multiprocessing as mp
 import torchvision.transforms as T
+import torch.nn.functional as F
 
 __all__ = ['CVPRMedSAMEmbeddingSaver', 'CVPRMedSAMSaver']
 
@@ -88,9 +89,7 @@ class CVPRMedSAMSaver(BaseSaver):
         """
         super().__init__(work_dir, data_settings, saver_settings)
         self.root_data_dir = data_settings['dataset']['root_dir']
-        shutil.rmtree(os.path.abspath(self.result_dir), ignore_errors=True)
-        self.copy_dir_structure(self.root_data_dir, 
-                                self.result_dir)
+        self.copy_dir_structure(self.root_data_dir, self.result_dir)
             
     def copy_dir_structure(self, root_data_dir, result_dir):
         has_npz = np.any(list(map(lambda x: '.npz' in x, os.listdir(os.path.join(root_data_dir)) )))
@@ -109,12 +108,10 @@ class CVPRMedSAMSaver(BaseSaver):
             path = paths[i]
             new_pred = {}
             
-            pred = preds['mask'][i]
-            ori_image_shape = inputs['meta']['original_shape'][i]
-            pred = T.Resize((ori_image_shape[1:]))(pred)
-            pred = pred.type(torch.uint8)
+            pred = preds['masks'][i]
             
-            new_pred['segs'] = pred.half().cpu().detach().numpy()
+            new_pred['segs'] = pred.cpu().detach().numpy()
+            relative_path = os.path.relpath(path, self.root_data_dir)
             new_path = os.path.join(self.result_dir, 
-                                    path.replace(self.root_data_dir, ''))
+                                    relative_path)
             np.savez_compressed(new_path, **new_pred)

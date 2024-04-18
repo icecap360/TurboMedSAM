@@ -182,7 +182,7 @@ data = dict(
 
 saver = dict(
     type = savers.CVPRMedSAMEmbeddingSaver,
-    directory = os.path.join(work_dir, exp_name, 'results'),
+    directory = work_dir,
     keys = ['embeddings']
 )
 ffcv_writer = dict(
