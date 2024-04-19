@@ -6,7 +6,7 @@ from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_crea
 import losses
 import metrics
 import pipelines
-import transforms
+import custom_transforms
 from torchvision.transforms import v2
 import dataloaders
 from functools import partial
@@ -156,10 +156,10 @@ train_transform = v2.Compose(
         v2.ToDtype(torch.float32, scale=True)
     ])
 
-train_collate_transforms = [transforms.MixPatch(1.0, 256),
-    transforms.NoLabelCutMix(alpha=1.0)]
-train_collate_functionals = [transforms.MixPatchFunctional,
-    transforms.NoLabelCutMixFunctional]
+train_collate_transforms = [custom_transforms.MixPatch(1.0, 256),
+    custom_transforms.NoLabelCutMix(alpha=1.0)]
+train_collate_functionals = [custom_transforms.MixPatchFunctional,
+    custom_transforms.NoLabelCutMixFunctional]
 
 train_pipeline = pipelines.TeacherStudentPipeline(
     train_transform, 

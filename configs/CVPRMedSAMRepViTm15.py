@@ -70,7 +70,7 @@ lr_scheduler = dict(
     )
 
 compute = dict(
-    gpu_ids = [2],
+    gpu_ids = [0,1,2],
     use_cpu = False,
     use_amp = True,
     mp_start_method = 'fork',
@@ -113,7 +113,7 @@ metric = metrics.MedSAMMetrics(class_thresholds=[5])
 custom_hooks = []
 seed = 0
 
-data_root = '/data/qasim/MedSAM/split_npzs_3chnl/'
+data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
 pipeline_type = pipelines.CVPRMedSAMPipeline(
     img_shape=img_size,
     target_mask_shape=256,

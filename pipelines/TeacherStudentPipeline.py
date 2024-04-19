@@ -5,19 +5,22 @@ from torch.utils.data import default_collate
 import random 
 
 class TeacherStudentPipeline(BasePipeline):
-    def __init__(self, transform, student_transform=None, teacher_transform=None, collate_transforms= None, collate_functionals=None):
+    def __init__(self, transform, student_transform=None, teacher_transform=None, target_transform=None, collate_transforms= None, collate_functionals=None):
         self.transform = transform
         self.student_transform = student_transform
         self.teacher_transform = teacher_transform
         self.collate_functionals = collate_functionals
         self.collate_transforms = collate_transforms
+        self.target_transform = target_transform
         if collate_transforms:
             assert len(self.collate_functionals) == len(self.collate_transforms)
         
     def pipeline(self, inputs, targets, meta):
         inputs, targets = self.transform(inputs, targets)
         if self.student_transform:
-            student_inputs, student_targets = self.student_transform(inputs, targets)
+            if not self.target_transform:
+                student_inputs, student_targets = self.student_transform(inputs, targets)
+                
         else:
             inputs, targets = inputs, targets
         if self.teacher_transform:

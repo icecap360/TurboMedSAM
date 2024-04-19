@@ -11,7 +11,9 @@ import dataloaders
 from functools import partial
 import savers
 from torch.distributed.optim import ZeroRedundancyOptimizer
+from torchvision.transforms import v2
 
+image_size = 1024
 batch_size = 2
 encoder_embed_dim=768
 encoder_depth=12
@@ -130,25 +132,62 @@ custom_hooks = []
 seed = 0
 
 data_root = '/data/qasim/MedSAM/split_npzs_3chnl/'
-pipeline_type = pipelines.CVPRMedSAMDistillationPipeline(
-    student_image_shape = 1024,
-    teacher_image_shape = 256,
-    student_normalize=True,
-    teacher_normalize=False,
-    means = [0.2482501, 0.21106622, 0.20026337],     
-    stds = [0.3038128, 0.27170245, 0.26680432])
+test_transform_student = v2.Compose(
+    [
+        v2.Normalize(mean = [0.2482501, 0.21106622, 0.20026337],     
+                     std = [0.3038128, 0.27170245, 0.26680432])
+    ])
+test_transform = v2.Compose(
+    [
+        # v2.ToImage(),
+        v2.Resize(size=(image_size, image_size), antialias=True),
+        # v2.RandomHorizontalFlip(p=0.5),
+        v2.ToDtype(torch.float32, scale=True)
+    ])
+train_transform_student = v2.Compose(
+    [v2.Normalize(mean = [0.2482501, 0.21106622, 0.20026337],     
+                std = [0.3038128, 0.27170245, 0.26680432])
+    ])
+train_transform = v2.Compose(
+    [
+        v2.Resize(size=(image_size+256, image_size+256), antialias=True),
+        v2.RandomResizedCrop(size=(image_size, image_size), 
+                             scale=(0.5, 1.0), 
+                             ratio=(0.75, 1.3333),
+                             antialias=True),
+        v2.RandomHorizontalFlip(p=0.5),
+        v2.RandomVerticalFlip(p=0.5),
+        # v2.RandAugment(num_ops=2,
+        #                magnitude=9),
+        # v2.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0),
+        v2.ToDtype(torch.float32, scale=True)
+    ])
+
+train_collate_transforms = [transforms.MixPatch(1.0, 256),
+    transforms.NoLabelCutMix(alpha=1.0)]
+train_collate_functionals = [transforms.MixPatchFunctional,
+    transforms.NoLabelCutMixFunctional]
+
+train_pipeline = pipelines.TeacherStudentPipeline(
+    train_transform, 
+    student_transform=train_transform_student, 
+    collate_transforms=train_collate_transforms,
+    collate_functionals=train_collate_functionals)
+test_pipeline = pipelines.TeacherStudentPipeline(test_transform, student_transform=test_transform_student)
+
 data = dict(
     train=dict(
         dataset = dict(       
             type = datasets.CVPRMedSAMEncoderDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=pipeline_type.pipeline_teacher_student),
+            pipeline=train_pipeline.pipeline),
         sampler = dict(
             type = ClassBalancedSampler,
             num_sample_class =  1,
             subset_classes = None,
             ),
+        collate_fn = train_pipeline.collate_fn,
         dataloader_creator = dict( type= basic_dataloader_creator)
         ),
     val=dict(
@@ -156,7 +195,7 @@ data = dict(
             type = datasets.CVPRMedSAMEncoderDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=pipeline_type.pipeline_teacher_student),
+            pipeline=test_pipeline.pipeline.pipeline_encoder_teacher_student),
         sampler = dict( type = DistributedSampler),
         dataloader_creator = dict( type= dataloaders.CVPRMedSAM_val_dataloader_creator)
         ),
@@ -165,7 +204,7 @@ data = dict(
             type = datasets.CVPRMedSAMEncoderDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=pipeline_type.pipeline_teacher_student),
+            pipeline=test_pipeline.pipeline),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type= dataloaders.CVPRMedSAM_val_dataloader_creator)
     ),
@@ -174,7 +213,7 @@ data = dict(
             type = datasets.CVPRMedSAMEncoderDataset,
             # classes=classes,
             root_dir='/pub4/qasim/MedSAM/split_npzs_3chnl/',
-            pipeline=pipeline_type.pipeline_encoder_train),
+            pipeline=test_pipeline.pipeline),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type = basic_dataloader_creator)
     ),

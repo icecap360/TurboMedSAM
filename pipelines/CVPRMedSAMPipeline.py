@@ -114,8 +114,6 @@ class CVPRMedSAMPipeline:
             "meta": meta
         }, {
             "mask": np.float32(gt2D[None, :,:]),
-            # "original_mask": np.int64(gt[None, :,:]>0), # problem because this varies with instances!
-            "meta": meta,
         }
 
     def preprocess_2D(self, img, bboxes, gt, meta):
@@ -143,7 +141,6 @@ class CVPRMedSAMPipeline:
         }, {
             "mask": gt2D[None, :,:].type(torch.float32),
             # "original_mask": np.int64(gt[None, :,:]>0), # problem because this varies with instances!
-            "meta": meta,
         }
 
     def img_transform(self, img_3c, resize_img_transform, normalize_transform):
@@ -214,7 +211,7 @@ class CVPRMedSAMPipeline:
 class CVPRMedSAMDistillationPipeline(CVPRMedSAMPipeline):
 
     def __init__(self, student_image_shape, teacher_image_shape, 
-                 student_normalize, teacher_normalize, stds, means):
+                 student_normalize, teacher_normalize, stds, means, target_mask_shape=None):
         self.student_resize_transform = v2.Resize((student_image_shape,student_image_shape))
         self.teacher_resize_transform = v2.Resize((teacher_image_shape,student_image_shape))
         if student_normalize:
@@ -229,6 +226,19 @@ class CVPRMedSAMDistillationPipeline(CVPRMedSAMPipeline):
             )
         else:
             self.teacher_normalize_transform = None
+        self.target_mask_shape = target_mask_shape
+
+    def pipeline_encoder_teacher_student(self, inputs, outputs, meta):
+        img_student_padded, _ = self.img_transform(
+            inputs['image'],
+            self.student_resize_transform, 
+            self.student_normalize_transform)
+        img_teacher_padded, _ = self.img_transform(
+            inputs['image'],
+            self.teacher_resize_transform, 
+            self.teacher_normalize_transform)
+        return  {"student_image" : np.float32(img_student_padded), "teacher_image" : np.float32(img_teacher_padded), "meta"  : meta}, outputs
+
 
     def pipeline_teacher_student(self, inputs, outputs, meta):
         img_student_padded, _ = self.img_transform(
@@ -239,4 +249,17 @@ class CVPRMedSAMDistillationPipeline(CVPRMedSAMPipeline):
             inputs['image'],
             self.teacher_resize_transform, 
             self.teacher_normalize_transform)
-        return  {"student_image" : np.float32(img_student_padded), "teacher_image" : np.float32(img_teacher_padded), "meta"  : meta}, outputs
+        gt2D = self.target_transform(outputs['mask'], meta['npz_path'])
+        return  {"student_image" : np.float32(img_student_padded), "teacher_image" : np.float32(img_teacher_padded), "meta"  : meta}, {
+            "mask": gt2D[None, :,:].type(torch.float32)
+        }
+
+    def target_transform(self, gt, npz_path):
+        gt_resize = self.resize_mask_transform(gt)
+        label_ids = torch.unique(gt_resize)[1:]
+        try:
+            gt2D = (gt_resize == random.choice(label_ids.tolist())).type(torch.uint8)
+        except:
+            print(npz_path, 'label_ids.tolist()', label_ids)
+            gt2D = (gt_resize == torch.max(gt_resize)).type(torch.uint8)
+        return gt2D

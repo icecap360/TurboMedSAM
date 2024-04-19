@@ -29,16 +29,20 @@ class TeacherStudentModel(BaseModule):
             if 'teacher_image' in data_batch.keys():
                 assert not 'image' in data_batch.keys()
                 data_batch['image'] = data_batch['teacher_image']
+                data_batch['bbox'] = data_batch['teacher_bbox']
                 teacher_pred = self.teacher(data_batch)
                 data_batch.pop('image')
+                data_batch.pop('bbox')
             else:
                 teacher_pred = self.teacher(data_batch)
 
         if 'student_image' in data_batch.keys():
             assert not 'image' in data_batch.keys()
             data_batch['image'] = data_batch['student_image']
+            data_batch['bbox'] = data_batch['student_bbox']
             student_pred = self.student(data_batch)
             data_batch.pop('image')
+            data_batch.pop('bbox')
         else:
             student_pred = self.student(data_batch)
 
