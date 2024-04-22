@@ -9,19 +9,97 @@ from framework import BaseDataset
 import cv2
 import random
 from torchvision.transforms import v2
+from torchvision.transforms.v2 import functional as F
 from torchvision.transforms import InterpolationMode
+from torchvision.transforms.v2 import functional as F
+from custom_transforms import RandomRotateDiscrete
+
 class CVPRMedSAMPipeline:
 
     def __init__(self, img_shape, target_mask_shape,
-                 normalize, means, stds):
+                 normalize, means, stds, apply_random_rotate=False,
+                 apply_random_flip=False):
         self.img_shape = img_shape
-        self.resize_img_transform = v2.Resize((img_shape, img_shape))
+        self.resize_img_transform = v2.Resize((img_shape, img_shape), interpolation=InterpolationMode.BILINEAR)
         self.target_mask_shape = target_mask_shape
         self.resize_mask_transform = v2.Resize((target_mask_shape, target_mask_shape), interpolation=InterpolationMode.NEAREST)
+        self.apply_random_rotate = apply_random_rotate
+        if apply_random_rotate:
+            self.random_rotate = RandomRotateDiscrete()
+        self.apply_random_flip = apply_random_flip
+        if apply_random_flip:
+            self.h_flip = v2.RandomHorizontalFlip()
+            self.v_flip = v2.RandomVerticalFlip()
+        self.normalize = normalize
+        self.means = np.array(means)
+        self.stds = np.array(stds)
         if normalize:
             self.normalize_transform = v2.Normalize(mean=means, std=stds)
         else:
             self.normalize_transform = None
+
+    def pipeline_official(self, inputs, outputs, meta):
+        img = np.moveaxis(inputs['image'].numpy(), 0, 2)
+        img = self._resize_longest_side(img, self.img_shape)
+        h_resize_longest, w_resize_longest = img.shape[:2]
+        img_norm = (img - img.min()) / np.clip(
+            img.max() - img.min(), a_min=1e-8, a_max=None
+        )
+        if self.normalize_transform:
+            img_norm = (img_norm-np.array(self.means))/np.array(self.stds) 
+        img_padded = self._pad_image(img_norm, self.img_shape) # (256, 256, 3)
+        img_padded = torch.tensor(np.moveaxis(img_padded, 2, 0), dtype=torch.float32)
+        
+        gt_ratio_to_resize = self.target_mask_shape/self.img_shape
+        gt = cv2.resize(
+            outputs['mask'].numpy(),
+            (int(w_resize_longest*gt_ratio_to_resize), int(h_resize_longest*gt_ratio_to_resize)),
+            interpolation=cv2.INTER_NEAREST
+        ).astype(np.uint8)
+        gt = self._pad_image(gt, self.target_mask_shape) # (256, 256)
+        label_ids = np.unique(gt)[1:]
+        try:
+            gt2D = np.uint8(gt == random.choice(label_ids.tolist())) # only one label, (256, 256)
+        except:
+            print(meta['npz_path'], 'label_ids.tolist()', label_ids.tolist())
+            gt2D = np.uint8(gt == np.max(gt)) # only one label, (256, 256)
+        gt2D = torch.tensor(gt2D[None, :, :], dtype=torch.float32)
+
+        # meta['img_resize_shape'] = {
+        #     'H': h_resize_longest,
+        #     'W': w_resize_longest
+        # }
+
+        bbox_format = inputs['bbox'].format
+
+        bbox, canvas_size = F.resize_bounding_boxes(inputs['bbox'].type(torch.float32), canvas_size=inputs['bbox'].canvas_size, size=(h_resize_longest, w_resize_longest))
+        if self.apply_random_rotate and random.random() < 0.5:
+            angle = random.choice([0,90,180,270])
+            img_padded = F.rotate_image(img_padded, angle)
+            gt2D = F.rotate_mask(gt2D, angle)
+            bbox = F.rotate_bounding_boxes(bbox, bbox_format, 
+                                        canvas_size, 
+                                        angle)[0]
+        if self.apply_random_flip and random.random() < 0.5:
+            img_padded = F.horizontal_flip_image(img_padded)
+            gt2D = F.horizontal_flip_mask(gt2D)
+            bbox = F.horizontal_flip_bounding_boxes(bbox,
+                                                    bbox_format, 
+                                                    canvas_size)
+        if self.apply_random_flip and random.random() < 0.5:
+            img_padded = F.vertical_flip_image(img_padded)
+            gt2D = F.vertical_flip_mask(gt2D)
+            bbox = F.vertical_flip_bounding_boxes(bbox, 
+                                                  bbox_format,
+                                                  canvas_size)
+
+        return {'image': img_padded, 
+                'meta': meta,
+                "bbox": bbox[None, None, ...].type(torch.float32), # (B, 1, 4)
+                }, {
+                'mask':gt2D
+                }
+
     def pipeline(self, inputs, outputs, meta):
         if meta['image_type'] == '2D':
             return self.preprocess_2D(
@@ -54,8 +132,8 @@ class CVPRMedSAMPipeline:
             self.resize_img_transform, 
             self.normalize_transform)
         bboxes = self.resize_img_transform(inputs["bbox"])
-        return  {"image" : np.float32(img_padded),
-                'bbox' : np.float32(bboxes[None, None, ...]),
+        return  {"image" : img_padded.type(torch.float32),
+                'bbox' : bboxes[None, None, ...].type(torch.float32),
                 "meta"  : meta}, outputs
     
     def pipeline_encoder(self, inputs, outputs, meta):
@@ -114,8 +192,6 @@ class CVPRMedSAMPipeline:
             "meta": meta
         }, {
             "mask": np.float32(gt2D[None, :,:]),
-            # "original_mask": np.int64(gt[None, :,:]>0), # problem because this varies with instances!
-            "meta": meta,
         }
 
     def preprocess_2D(self, img, bboxes, gt, meta):
@@ -137,13 +213,12 @@ class CVPRMedSAMPipeline:
         #         # print('DA with flip upside down')
         
         return {
-            "image": np.float32(img_padded),
-            "bbox": np.float32(bboxes[None, None, ...]), # (B, 1, 4)
+            "image": img_padded.type(torch.float32),
+            "bbox": bboxes[None, None, ...].type(torch.float32), # (B, 1, 4)
             "meta": meta
         }, {
-            "mask": np.float32(gt2D[None, :,:]),
+            "mask": gt2D[None, :,:].type(torch.float32),
             # "original_mask": np.int64(gt[None, :,:]>0), # problem because this varies with instances!
-            "meta": meta,
         }
 
     def img_transform(self, img_3c, resize_img_transform, normalize_transform):
@@ -211,12 +286,13 @@ class CVPRMedSAMPipeline:
     
     
 
-class CVPRMedSAMDistillationPipeline(CVPRMedSAMPipeline):
+class CVPRMedSAMPipelineDistillation(CVPRMedSAMPipeline):
 
     def __init__(self, student_image_shape, teacher_image_shape, 
-                 student_normalize, teacher_normalize, stds, means):
+                 stds, means, target_mask_shape=None, student_normalize=False, teacher_normalize=False):
         self.student_resize_transform = v2.Resize((student_image_shape,student_image_shape))
         self.teacher_resize_transform = v2.Resize((teacher_image_shape,student_image_shape))
+        self.target_resize_transform = v2.Resize((target_mask_shape,target_mask_shape))
         if student_normalize:
             self.student_normalize_transform = v2.Normalize(
                 mean=means, std=stds
@@ -230,7 +306,7 @@ class CVPRMedSAMDistillationPipeline(CVPRMedSAMPipeline):
         else:
             self.teacher_normalize_transform = None
 
-    def pipeline_teacher_student(self, inputs, outputs, meta):
+    def pipeline_encoder_teacher_student(self, inputs, outputs, meta):
         img_student_padded, _ = self.img_transform(
             inputs['image'],
             self.student_resize_transform, 
@@ -240,3 +316,34 @@ class CVPRMedSAMDistillationPipeline(CVPRMedSAMPipeline):
             self.teacher_resize_transform, 
             self.teacher_normalize_transform)
         return  {"student_image" : np.float32(img_student_padded), "teacher_image" : np.float32(img_teacher_padded), "meta"  : meta}, outputs
+
+
+    def pipeline(self, inputs, outputs, meta):
+        img_student_padded, _ = self.img_transform(
+            inputs['image'],
+            self.student_resize_transform, 
+            self.student_normalize_transform)
+        img_teacher_padded, _ = self.img_transform(
+            inputs['image'],
+            self.teacher_resize_transform, 
+            self.teacher_normalize_transform)
+        student_bboxes = self.student_resize_transform(inputs["bbox"])
+        teacher_bboxes = self.teacher_resize_transform(inputs["bbox"])
+        gt2D = self.target_transform(outputs['mask'], meta['npz_path'])
+        return  {"student_image" : np.float32(img_student_padded), 
+                 "teacher_image" : np.float32(img_teacher_padded), 
+                 "student_bbox": student_bboxes[None, None, ...].type(torch.float32),
+                 "teacher_bbox": teacher_bboxes[None, None, ...].type(torch.float32),
+                 "meta"  : meta}, {
+            "student_mask": gt2D[None, :,:].type(torch.float32)
+        }
+
+    def target_transform(self, gt, npz_path):
+        gt_resize = self.target_resize_transform(gt)
+        label_ids = torch.unique(gt_resize)[1:]
+        try:
+            gt2D = (gt_resize == random.choice(label_ids.tolist())).type(torch.uint8)
+        except:
+            print(npz_path, 'label_ids.tolist()', label_ids)
+            gt2D = (gt_resize == torch.max(gt_resize)).type(torch.uint8)
+        return gt2D

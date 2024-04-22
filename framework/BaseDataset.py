@@ -41,7 +41,7 @@ class BaseDataset(ABC, Dataset):
 class WrapperFunc:
     def __init__(self, func):
         self.func = func
-
+    
     def wrapper_func(self, *args):
         # Call the stored function with the additional 'self' argument
         return self.func(*args)

@@ -14,11 +14,12 @@ from typing import Optional, Tuple, Type
 
 # This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa
 
-__all__ = ['ViTMedSAM']
+__all__ = ['ViT']
 
-class ViTMedSAM(BaseModule):
+class ViT(BaseModule):
     def __init__(
         self,
+        distillation,
         img_size: int = 1024,
         patch_size: int = 16,
         in_chans: int = 3,
@@ -56,6 +57,7 @@ class ViTMedSAM(BaseModule):
             global_attn_indexes (list): Indexes for blocks using global attention.
         """
         super().__init__(init_cfg)
+        self.distillation = distillation
         self.img_size = img_size
 
         self.patch_embed = PatchEmbed(
@@ -109,7 +111,10 @@ class ViTMedSAM(BaseModule):
         )
 
     def forward(self, data_batch):
-        x = data_batch
+        if torch.is_tensor(data_batch):
+            x = data_batch
+        else:
+            x = data_batch['image']
         x = self.patch_embed(x)
         if self.pos_embed is not None:
             x = x + self.pos_embed
@@ -118,8 +123,10 @@ class ViTMedSAM(BaseModule):
             x = blk(x)
 
         x = self.neck(x.permute(0, 3, 1, 2))
-
-        return x
+        if self.distillation:
+            return {"embeddings": x}
+        else:
+            return x
 
 # From https://github.com/facebookresearch/detectron2/blob/main/detectron2/layers/batch_norm.py # noqa
 # Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa

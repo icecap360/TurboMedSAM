@@ -6,7 +6,7 @@ from framework import ClassBalancedSampler, BaseScheduler, basic_dataloader_crea
 import losses
 import metrics
 import pipelines
-from torchvision import transforms
+import custom_transforms
 from torchvision.transforms import v2
 import dataloaders
 from functools import partial
@@ -22,7 +22,7 @@ prompt_embed_dim = 256
 vit_patch_size = 16
 
 model = models.TeacherStudentModel(
-    student=models.repvit_model_m1_1(
+    student=models.repvit_model_m0_6(
             init_cfg=None, #{
             #     "type": "pretrained",
             #     "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/repvit_sam.pt",
@@ -31,7 +31,8 @@ model = models.TeacherStudentModel(
             distillation=True,
             num_classes=0
         ),
-    teacher=models.ViTMedSAM(
+    teacher=models.ViT(
+        distillation=True,
         depth=encoder_depth,
         embed_dim=encoder_embed_dim,
         img_size=image_size,
@@ -71,8 +72,8 @@ lr_scheduler = dict(
     warmup_by_epoch = True,
     warmup_epochs = 4,
     warmup = 'constant_value',
-    warmup_iters = 75000,
-    warmup_value = 8e-5
+    warmup_iters = 40000,
+    warmup_value = 4e-5
     )
 
 compute = dict(
@@ -123,7 +124,7 @@ metric = metrics.NoMetric()
 custom_hooks = []
 seed = 0
 
-data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
+data_root = '/pub4/qasim/MedSAM/full_dataset_3_chnl/'
 test_transform_student = v2.Compose(
     [
         v2.Normalize(mean = [0.2482501, 0.21106622, 0.20026337],     
@@ -138,7 +139,7 @@ test_transform = v2.Compose(
     ])
 train_transform_student = v2.Compose(
     [v2.Normalize(mean = [0.2482501, 0.21106622, 0.20026337],     
-                     std = [0.3038128, 0.27170245, 0.26680432])
+                std = [0.3038128, 0.27170245, 0.26680432])
     ])
 train_transform = v2.Compose(
     [
@@ -148,12 +149,23 @@ train_transform = v2.Compose(
                              ratio=(0.75, 1.3333),
                              antialias=True),
         v2.RandomHorizontalFlip(p=0.5),
+        v2.RandomVerticalFlip(p=0.5),
         # v2.RandAugment(num_ops=2,
         #                magnitude=9),
         # v2.RandomErasing(p=0.5, scale=(0.02, 0.33), ratio=(0.3, 3.3), value=0),
         v2.ToDtype(torch.float32, scale=True)
     ])
-train_pipeline = pipelines.TeacherStudentPipeline(train_transform, student_transform=train_transform_student)
+
+train_collate_transforms = [custom_transforms.MixPatch(1.0, 256),
+    custom_transforms.NoLabelCutMix(alpha=1.0)]
+train_collate_functionals = [custom_transforms.MixPatchFunctional,
+    custom_transforms.NoLabelCutMixFunctional]
+
+train_pipeline = pipelines.TeacherStudentPipeline(
+    train_transform, 
+    student_transform=train_transform_student, 
+    collate_transforms=train_collate_transforms,
+    collate_functionals=train_collate_functionals)
 test_pipeline = pipelines.TeacherStudentPipeline(test_transform, student_transform=test_transform_student)
 
 data = dict(
@@ -168,6 +180,7 @@ data = dict(
             num_sample_class =  1,
             subset_classes = None,
             ),
+        collate_fn = train_pipeline.collate_fn,
         dataloader_creator = dict( type= basic_dataloader_creator)
         ),
     val=dict(
@@ -201,7 +214,7 @@ data = dict(
 
 saver = dict(
     type = savers.CVPRMedSAMEmbeddingSaver,
-    directory = os.path.join(work_dir, exp_name, 'results'),
+    directory = work_dir,
     keys = ['embeddings']
 )
 ffcv_writer = dict(

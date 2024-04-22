@@ -57,7 +57,10 @@ class CVPRMedSAMDataset(BaseDataset):
         meta = dict(
             idx=idx,
             npz_path = npz_path,
-            original_shape = image.shape,
+            original_shape = dict(
+                C=image.shape[0],
+                L= image.shape[1],
+                W = image.shape[2]),
             modality = self.get_modality(npz_path)
         )
         
@@ -96,9 +99,10 @@ class CVPRMedSAMDataset(BaseDataset):
                                         meta) 
     
     def get_modality(self, path:str):
-        path = path.replace(self.npz_dir, '')
-        if path[0] == '/':
-            path = path[1:]
+        path = os.path.relpath(path, self.npz_dir)
+        # path = path.replace(self.npz_dir, '')
+        # if path[0] == '/':
+        #     path = path[1:]
         return os.path.normpath(path).split(os.sep)[0]
 
     def get_cat2indices(self):
@@ -141,15 +145,20 @@ class CVPRMedSAMInferenceDataset(CVPRMedSAMDataset):
         
         npz_path = self.npz_paths[idx]
         npz = np.load(npz_path, allow_pickle=True, mmap_mode="r")
+        print(npz['imgs'].shape, npz_path)
         image = np.moveaxis(npz['imgs'],2,0)
         bbox = tv_tensors.BoundingBoxes(npz['boxes'], 
                                         canvas_size=image.shape[1:],
                                         format=tv_tensors.BoundingBoxFormat.XYXY,
                                         requires_grad=False)
+        
         meta = dict(
             idx=idx,
             npz_path = npz_path,
-            original_shape = image.shape,
+            original_shape = dict(
+                C=image.shape[0],
+                L= image.shape[1],
+                W = image.shape[2]),
             modality = self.get_modality(npz_path)
         )
         if min(image.shape) > 3:
@@ -200,7 +209,10 @@ class CVPRMedSAMEncoderDataset(CVPRMedSAMDataset):
         meta = dict(
             idx=idx,
             npz_path = npz_path,
-            original_shape = image.shape,
+            original_shape = dict(
+                C=image.shape[0],
+                L= image.shape[1],
+                W = image.shape[2]),
             modality = self.get_modality(npz_path)
         )
         if min(image.shape) > 3:
@@ -260,7 +272,10 @@ class CVPRMedSAMEncoderPreCompDataset(BaseDataset):
         meta = dict(
             idx=idx,
             npz_path = npz_path,
-            original_shape = image.shape,
+            original_shape = dict(
+                C=image.shape[0],
+                L= image.shape[1],
+                W = image.shape[2]),
             modality = self.get_modality(npz_path)
         )
 
@@ -281,7 +296,10 @@ class CVPRMedSAMEncoderPreCompDataset(BaseDataset):
                                         meta)    
     
     def get_modality(self, path:str):
-        path = path.replace(self.npz_dir, '')
+        path = os.path.relpath(path, self.npz_dir)
+        # path = path.replace(self.npz_dir, '')
+        # if path[0] == '/':
+        #     path = path[1:]
         return os.path.normpath(path).split(os.sep)[0]
 
     def get_cat2indices(self):
@@ -337,7 +355,10 @@ class CVPRMedSAMDatasetFFCVWrite(CVPRMedSAMDataset):
         meta = dict(
             idx=idx,
             npz_path = npz_path,
-            original_shape = image.shape,
+            original_shape = dict(
+                C=image.shape[0],
+                L= image.shape[1],
+                W = image.shape[2]),
             modality = self.get_modality(npz_path)
         )
 
@@ -348,10 +369,13 @@ class CVPRMedSAMDatasetFFCVWrite(CVPRMedSAMDataset):
             meta['image_type'] = '2D'
 
         return image, target, json.dumps(meta, default=int)
-
-    def get_modality(self, path:str):
-        path = path.replace(self.npz_dir, '')
-        return os.path.normpath(path).split(os.sep)[0]
     
+    def get_modality(self, path:str):
+        path = os.path.relpath(path, self.npz_dir)
+        # path = path.replace(self.npz_dir, '')
+        # if path[0] == '/':
+        #     path = path[1:]
+        return os.path.normpath(path).split(os.sep)[0]
+
 def get_MedSAM_classes(root_dir, split_type):
     return os.listdir(os.path.join(root_dir, split_type))

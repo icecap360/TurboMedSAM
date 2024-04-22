@@ -10,6 +10,8 @@ from progress.bar import Bar
 from framework import import_module, setup_multi_processes, init_dist_custom, get_dist_info, logger, read_cfg_str, get_device, init_random_seed, set_random_seed, create_dataloader, set_visible_devices, dict_to_device
 from copy import deepcopy
 import sys 
+import numpy as np
+
 
 # from framework import 
 
@@ -17,9 +19,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Inference on a detector')
     parser.add_argument('config', help='train config file path')
     parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument('--local_world_size', type=int, default = 1)    
     parser.add_argument('--save_results', type=bool, default=True)
     parser.add_argument('--benchmark', type=bool, default=True)
-    parser.add_argument('--local_world_size', type=int, default = 1)
     parser.add_argument(
         '--resume-from', help='the checkpoint file to resume from')
     parser.add_argument(
@@ -103,13 +105,11 @@ def main(args):
     cfg.seed = seed
     
     # Create the logger
-    if rank == 0:
-        logger.init_message(work_dir, cfg.exp_name, read_cfg_str(abs_config_path))
-        logger.info_and_print(f'Distributed training: {distributed}')
-    logger.info(f'Rank{rank}: Device type: {device}')
-    logger.info(f'Rank{rank}: Set random seed to {seed}')
-    if not cfg.compute['use_cpu']:
-        logger.info(f'Rank{rank}: GPU assigned: {gpu_id}')
+    print(work_dir, cfg.exp_name)
+    print(read_cfg_str(abs_config_path))
+    print(f'Rank{rank}: Device type: {device}')
+    print(f'Rank{rank}: Set random seed to {seed}')
+    print(f'Rank{rank}: GPU assigned: {gpu_id}')
 
     model = cfg.model
     saver_cfg = deepcopy(cfg.saver)

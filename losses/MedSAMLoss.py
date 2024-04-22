@@ -21,7 +21,7 @@ class MedSAMLoss(BaseLoss):
         return {'loss_dice': self.seg_loss(pred['logits'], target['mask']), 
                 'loss_ce': self.ce_loss(pred['logits'], target['mask'].float()),
                 'loss_iou': self.iou_loss(pred['iou'], iou_gt)
-}
+        }
 
     def cal_iou(self, result, reference):
         intersection = torch.count_nonzero(torch.logical_and(result, reference), dim=[i for i in range(1, result.ndim)])

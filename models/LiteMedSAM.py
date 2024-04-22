@@ -27,14 +27,16 @@ __all__ = ['LiteMedSAM']
 class LiteMedSAM(BaseDetector):
     def __init__(self,
                 settings,
-                encoder = None,
+                image_encoder = None,
+                prompt_encoder = None,
+                mask_decoder = None,
                 init_cfg=None,
                 ):
         
         super().__init__(init_cfg)
         
-        if encoder:
-            self.image_encoder = encoder
+        if image_encoder:
+            self.image_encoder = image_encoder
         else:
             encoder_cfg = settings['image_encoder']
             self.image_encoder = TinyViT(
@@ -53,27 +55,33 @@ class LiteMedSAM(BaseDetector):
                 layer_lr_decay=encoder_cfg['layer_lr_decay']
             )
         
-        decoder_cfg = settings['mask_decoder']
-        self.mask_decoder = MaskDecoder(
-            num_multimask_outputs=decoder_cfg['num_multimask_outputs'],
-            transformer=TwoWayTransformer(
-                depth=decoder_cfg['transformer_depth'],
-                embedding_dim=decoder_cfg['transformer_embedding_dim'],
-                mlp_dim=decoder_cfg['transformer_mlp_dim'],
-                num_heads=decoder_cfg['transformer_num_heads'],
-            ),
-            transformer_dim=decoder_cfg['transformer_dim'],
-            iou_head_depth=decoder_cfg['iou_head_depth'],
-            iou_head_hidden_dim=decoder_cfg['iou_head_hidden_dim'],
-        )
-        
-        prompt_encoder_cfg = settings['prompt_encoder']
-        self.prompt_encoder = PromptEncoder(
-            embed_dim=prompt_encoder_cfg['embed_dim'],
-            image_embedding_size=prompt_encoder_cfg['image_embedding_size'],
-            input_image_size=prompt_encoder_cfg['input_image_size'],
-            mask_in_chans=prompt_encoder_cfg['mask_in_chans']
+        if mask_decoder:
+            self.mask_decoder = mask_decoder
+        else:
+            decoder_cfg = settings['mask_decoder']
+            self.mask_decoder = MaskDecoder(
+                num_multimask_outputs=decoder_cfg['num_multimask_outputs'],
+                transformer=TwoWayTransformer(
+                    depth=decoder_cfg['transformer_depth'],
+                    embedding_dim=decoder_cfg['transformer_embedding_dim'],
+                    mlp_dim=decoder_cfg['transformer_mlp_dim'],
+                    num_heads=decoder_cfg['transformer_num_heads'],
+                ),
+                transformer_dim=decoder_cfg['transformer_dim'],
+                iou_head_depth=decoder_cfg['iou_head_depth'],
+                iou_head_hidden_dim=decoder_cfg['iou_head_hidden_dim'],
             )
+        
+        if prompt_encoder:
+            self.prompt_encoder = prompt_encoder
+        else:
+            prompt_encoder_cfg = settings['prompt_encoder']
+            self.prompt_encoder = PromptEncoder(
+                embed_dim=prompt_encoder_cfg['embed_dim'],
+                image_embedding_size=prompt_encoder_cfg['image_embedding_size'],
+                input_image_size=prompt_encoder_cfg['input_image_size'],
+                mask_in_chans=prompt_encoder_cfg['mask_in_chans']
+                )
                 
     def forward(self, input_params):
         image = input_params['image']
@@ -137,12 +145,25 @@ class LiteMedSAM(BaseDetector):
             raise Exception('init_cfg is formatted incorrectly')
 
     @torch.no_grad()
-    def postprocess_masks(self, masks, new_size, original_size):
+    def postprocess_masks(self, masks, target_length, new_size, original_size):
         """
         Do cropping and resizing
         """
+        masks = F.interpolate(
+            masks,
+            (target_length, target_length),
+            mode="bilinear",
+            align_corners=False,
+        )
+        masks = masks[..., : new_size[0], : new_size[1]]
+        masks = F.interpolate(
+            masks, original_size, mode="bilinear", align_corners=False
+        )
+        return masks
+    
         # Crop
-        masks = masks[:, :, :new_size[0], :new_size[1]]
+        crop_length = np.int64(np.array(new_size)/target_length * np.array(masks.shape[-2:]))
+        masks = masks[:, :, :crop_length[0], :crop_length[1]]
         # Resize
         masks = F.interpolate(
             masks,
