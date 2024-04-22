@@ -56,6 +56,9 @@ class TeacherStudentModel(BaseModule):
         return self.student.state_dict(destination, prefix, keep_vars)
     
     def init_weights(self, state_dict=None, strict=True):
-        self.student.init_weights(state_dict, strict)
-        self.teacher.init_weights(state_dict, strict)
-        return super().init_weights(state_dict, strict)
+        if state_dict:
+            self.student.init_weights(state_dict, strict)
+        else:
+            self.student.init_weights(None, strict)
+        self.teacher.init_weights(None, strict)
+        # return super().init_weights(state_dict, strict)

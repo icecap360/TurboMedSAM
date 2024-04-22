@@ -14,7 +14,7 @@ from functools import partial
 from custom_transforms import RandomRotateDiscrete
 
 img_size = 1024
-batch_size = 6
+batch_size = 10
 encoder_embed_dim=768
 encoder_depth=12
 encoder_num_heads=12
@@ -118,7 +118,7 @@ lr_scheduler = dict(
     warmup_epochs = 1,
     warmup = 'constant_value',
     warmup_iters = 40000,
-    warmup_value = 1e-5
+    warmup_value = 1e-4
     )
 
 compute = dict(
@@ -153,7 +153,7 @@ runner = dict(
     save_freq_iter = 10000,
     log_freq=5,
     resume_train = False,
-    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/checkpoints/RepViTm11_epoch4-Distill_ViTB_BasicAugmentation_epoch_1_20000.pth',
+    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/work_dir/CVPRMedSAMRepViTm11-DistillViTB/epoch_2.pth',
 )
 
 loss = losses.MedSAMTeacherLoss(
@@ -163,9 +163,9 @@ loss = losses.MedSAMTeacherLoss(
     'loss_dice': 1.0,
     'loss_ce': 1.0,
     'loss_iou': 1.0,
-    'loss_distillation': 3.0,
+    'loss_distillation': 1.0,
     })
-metric = metrics.MedSAMMetrics(class_thresholds=[5])
+metric = metrics.MedSAMTeacherMetrics(class_thresholds=[5])
 custom_hooks = []
 seed = 0
 
@@ -189,13 +189,13 @@ train_transform_student = v2.Compose(
     ])
 train_transform = v2.Compose(
     [
-        v2.Resize(size=(img_size+256, img_size+256), antialias=True),
-        v2.RandomResizedCrop(size=(img_size, img_size), 
-                             scale=(0.5, 1.0), 
-                             ratio=(0.75, 1.3333),
-                             antialias=True),
-        # v2.Resize(size=(img_size, img_size), antialias=True),
-        RandomRotateDiscrete(),
+        # v2.Resize(size=(img_size+256, img_size+256), antialias=True),
+        # v2.RandomResizedCrop(size=(img_size, img_size), 
+        #                      scale=(0.5, 1.0), 
+        #                      ratio=(0.75, 1.3333),
+        #                      antialias=True), -- this causes divergent training
+        v2.Resize(size=(img_size, img_size), antialias=True),
+        RandomRotateDiscrete(angles=[-90,90,0,180]),
         v2.RandomHorizontalFlip(p=0.5),
         v2.RandomVerticalFlip(p=0.5),
         # v2.RandAugment(num_ops=2,
@@ -214,10 +214,13 @@ train_pipeline = pipelines.TeacherStudentPipeline(
     # collate_functionals=train_collate_functionals
     )
 test_pipeline = pipelines.TeacherStudentPipeline(test_transform, student_transform=test_transform_student)
-pipeline_type = pipelines.CVPRMedSAMPipeline(
-    img_shape=img_size,
+
+pipeline_type = pipelines.CVPRMedSAMPipelineDistillation(
+    student_image_shape=1024,
+    teacher_image_shape=1024,
+    student_normalize=True,
+    teacher_normalize=False,
     target_mask_shape=256,
-    normalize=True,
     means = [0.2482501, 0.21106622, 0.20026337],     
     stds = [0.3038128, 0.27170245, 0.26680432])
 
@@ -241,7 +244,7 @@ data = dict(
             type = datasets.CVPRMedSAMDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=test_pipeline.pipeline),
+            pipeline=pipeline_type.pipeline),
         sampler = dict( type = DistributedSampler),
         dataloader_creator = dict( type= dataloaders.CVPRMedSAM_val_dataloader_creator)
         ),
@@ -250,7 +253,7 @@ data = dict(
             type = datasets.CVPRMedSAMDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=test_pipeline.pipeline),
+            pipeline=pipeline_type.pipeline),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type= dataloaders.CVPRMedSAM_val_dataloader_creator)
     ),
@@ -259,7 +262,7 @@ data = dict(
             type = datasets.CVPRMedSAMInferenceDataset,
             # classes=classes,
             root_dir='/data/qasim/MedSAM/official_val',
-            pipeline=test_pipeline.pipeline),
+            pipeline=pipeline_type.pipeline),
         sampler = dict(type = DistributedSampler),
         dataloader_creator = dict( type = basic_dataloader_creator)
     ),

@@ -22,7 +22,7 @@ prompt_embed_dim = 256
 vit_patch_size = 16
 
 model = models.TeacherStudentModel(
-    student=models.repvit_model_m1_1(
+    student=models.repvit_model_m0_6(
             init_cfg=None, #{
             #     "type": "pretrained",
             #     "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/repvit_sam.pt",
@@ -124,7 +124,7 @@ metric = metrics.NoMetric()
 custom_hooks = []
 seed = 0
 
-data_root = '/pub4/qasim/MedSAM/split_npzs_3chnl/'
+data_root = '/pub4/qasim/MedSAM/full_dataset_3_chnl/'
 test_transform_student = v2.Compose(
     [
         v2.Normalize(mean = [0.2482501, 0.21106622, 0.20026337],     

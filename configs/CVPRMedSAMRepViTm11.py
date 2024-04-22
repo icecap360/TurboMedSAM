@@ -12,14 +12,13 @@ from torchvision.transforms import v2
 import savers 
 
 img_size = 1024
-batch_size = 1
+batch_size = 18
 
-model = models.SegmentationModel(
-    model = models.LiteMedSAM(
+model = models.LiteMedSAM(
         image_encoder = models.repvit_model_m1_1(
             init_cfg={
                 "type": "pretrained",
-                "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/DistillRepViTm11-ViTB_epoch_1_20000.pth",
+                "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/DistillRepViTm11-ViTB_aggressive_aug_epoch_4.pth",
                 "strict": True
             },
             distillation=False,
@@ -49,7 +48,7 @@ model = models.SegmentationModel(
                 "no_image_encoder": True
             },
         )
-    )
+
 optimizer = dict(
     optimizer = dict(
         type = torch.optim.AdamW,
@@ -67,12 +66,12 @@ lr_scheduler = dict(
     warmup_by_epoch = False,
     warmup_epochs = 1,
     warmup = 'constant_value',
-    warmup_iters = 10000,
-    warmup_value = 1e-5
+    warmup_iters = 20000,
+    warmup_value = 3e-5
     )
 
 compute = dict(
-    gpu_ids = [1,2,3],
+    gpu_ids = [0,1,2],
     use_cpu = False,
     use_amp = True,
     mp_start_method = 'fork',
@@ -98,12 +97,12 @@ runner = dict(
     type= 'epoch',
     max_epochs = 4, #300
     max_iters = 10000,
-    val_freq_epoch = 2,
+    val_freq_epoch = 8,
     val_freq_iter = 1000,
     save_freq_iter = 10000,
     log_freq=5,
     resume_train = False,
-    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/checkpoints/RepViTm11_epoch4-Distill_ViTB_BasicAugmentation_epoch_1_20000.pth',
+    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/checkpoints/DistillRepViTm11-ViTB_aggressive_aug_epoch_4.pth',
 )
 
 loss = losses.MedSAMLoss({
@@ -115,13 +114,15 @@ metric = metrics.MedSAMMetrics(class_thresholds=[5])
 custom_hooks = []
 seed = 0
 
-data_root = '/data/qasim/MedSAM/split_npzs_3chnl/'
+data_root = '/pub4/qasim/MedSAM/full_dataset_3_chnl/'
 pipeline_type = pipelines.CVPRMedSAMPipeline(
     img_shape=img_size,
     target_mask_shape=256,
     normalize=True,
     means = [0.2482501, 0.21106622, 0.20026337],     
-    stds = [0.3038128, 0.27170245, 0.26680432])
+    stds = [0.3038128, 0.27170245, 0.26680432],
+    apply_random_flip=True,
+    apply_random_rotate=True)
 
 data = dict(
     train=dict(
@@ -129,7 +130,7 @@ data = dict(
             type = datasets.CVPRMedSAMDataset,
             # classes=classes,
             root_dir=data_root,
-            pipeline=pipeline_type.pipeline_2D),
+            pipeline=pipeline_type.pipeline_official),
         sampler = dict(
             type = ClassBalancedSampler,
             num_sample_class =  1,

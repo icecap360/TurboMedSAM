@@ -40,11 +40,14 @@ class MedSAMTeacherLoss(BaseLoss):
         elif self.distillation_type == 'bce':
             distillation_loss = self.bce_loss(student_outputs, torch.sigmoid(teacher_outputs))
         
-        target['student_mask'] = target['student_mask'][:, None, :, :]
-        target_mask = F.interpolate(target['student_mask'], 
-            (student_outputs.shape[-2], student_outputs.shape[-1]),
-            mode="nearest",
-        )
+        target_mask = target['student_mask']
+        if len(target_mask.shape)==3:
+            target_mask = target_mask[:, None, :, :]
+            target_mask = F.interpolate(target_mask, 
+                (student_outputs.shape[-2], student_outputs.shape[-1]),
+                mode="nearest",
+            )
+        
         iou_gt = self.cal_iou(torch.sigmoid(student_outputs) > 0.5, target_mask.bool())
         return {
             'loss_distillation': distillation_loss, 

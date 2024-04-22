@@ -38,7 +38,7 @@ class TeacherStudentPipeline(BasePipeline):
         for k in teacher_targets:
             targets['teacher_'+k] = teacher_targets[k]
         return inputs, targets
-    
+
     def collate_fn(self, batch):
         batch = default_collate(batch)
         index = random.choice(range(len(self.collate_transforms)))
