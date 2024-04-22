@@ -2,8 +2,11 @@ import numpy as np
 import cv2, os
 from PIL import Image
 
-input_path = '/data/qasim/MedSAM/official_val/2DBox_X-Ray_0168.npz'
-pred_path = '/home/qasim/Projects/TurboMedSAM/plots/2DBox_X-Ray_0168.npz'
+fname = '2DBox_MR_0133.npz'
+input_path = os.path.join('/data/qasim/MedSAM/official_val/', fname)
+pred_path = os.path.join(
+        '/home/qasim/Projects/TurboMedSAM/work_dir/CVPRMedSAMRepViTm11/results_npz/', 
+        fname)
 predicted_mask = np.load(pred_path)['segs']
 
 

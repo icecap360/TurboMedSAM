@@ -145,12 +145,25 @@ class LiteMedSAM(BaseDetector):
             raise Exception('init_cfg is formatted incorrectly')
 
     @torch.no_grad()
-    def postprocess_masks(self, masks, new_size, original_size):
+    def postprocess_masks(self, masks, target_length, new_size, original_size):
         """
         Do cropping and resizing
         """
+        masks = F.interpolate(
+            masks,
+            (target_length, target_length),
+            mode="bilinear",
+            align_corners=False,
+        )
+        masks = masks[..., : new_size[0], : new_size[1]]
+        masks = F.interpolate(
+            masks, original_size, mode="bilinear", align_corners=False
+        )
+        return masks
+    
         # Crop
-        masks = masks[:, :, :new_size[0], :new_size[1]]
+        crop_length = np.int64(np.array(new_size)/target_length * np.array(masks.shape[-2:]))
+        masks = masks[:, :, :crop_length[0], :crop_length[1]]
         # Resize
         masks = F.interpolate(
             masks,

@@ -31,7 +31,7 @@ checkpoints/
 plotting/*.png
 plotting/*.npz
 plotting/*.npy
-
+results/*.pth
 # PyInstaller
 #  Usually these files are written by a python script from a template
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.

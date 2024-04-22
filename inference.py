@@ -105,13 +105,11 @@ def main(args):
     cfg.seed = seed
     
     # Create the logger
-    if rank == 0:
-        logger.init_message(work_dir, cfg.exp_name, read_cfg_str(abs_config_path))
-        logger.info_and_print(f'Distributed training: {distributed}')
-    logger.info(f'Rank{rank}: Device type: {device}')
-    logger.info(f'Rank{rank}: Set random seed to {seed}')
-    if not cfg.compute['use_cpu']:
-        logger.info(f'Rank{rank}: GPU assigned: {gpu_id}')
+    print(work_dir, cfg.exp_name)
+    print(read_cfg_str(abs_config_path))
+    print(f'Rank{rank}: Device type: {device}')
+    print(f'Rank{rank}: Set random seed to {seed}')
+    print(f'Rank{rank}: GPU assigned: {gpu_id}')
 
     model = cfg.model
     saver_cfg = deepcopy(cfg.saver)
