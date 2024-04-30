@@ -55,6 +55,10 @@ class LiteMedSAM(BaseDetector):
                 layer_lr_decay=encoder_cfg['layer_lr_decay']
             )
         
+        if settings.get('freeze_image_encoder'):
+            for param in self.image_encoder.parameters():
+                param.requires_grad = False
+        
         if mask_decoder:
             self.mask_decoder = mask_decoder
         else:
