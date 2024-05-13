@@ -362,9 +362,11 @@ class RepViTModel(BaseModule):
         if self.init_cfg == None and state_dict==None:
             return
         elif state_dict:
+            keys = [k for k in state_dict.keys()]
+            if keys[0].startswith('module.'):
+                state_dict = keep_keys(state_dict,"module.", [(r"^module.", "")])
             self.load_state_dict(
-                        keep_keys(state_dict,"module.",
-                                  [(r"^module.", "")]), 
+                        state_dict, 
                         strict= strict)
         elif 'pretrained' in self.init_cfg['type'].lower():
             if not 'checkpoint' in self.init_cfg.keys():
@@ -426,7 +428,7 @@ def repvit_model_m0_6(pretrained=False, num_classes = 1000, distillation=False, 
     cfgs_m0_6 = [
         [3,   2,  40, 1, 0, 1],
         [3,   2,  40, 0, 0, 1],
-        [3,   2,  80, 0, 0, 2],
+        [3,   2,  80, 0, 0, 1], #[3,   2,  80, 0, 0, 2],
         [3,   2,  80, 1, 0, 1],
         [3,   2,  80, 0, 0, 1],
         [3,   2,  160, 0, 1, 2],
