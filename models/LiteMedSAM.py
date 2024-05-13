@@ -86,6 +86,10 @@ class LiteMedSAM(BaseDetector):
                 input_image_size=prompt_encoder_cfg['input_image_size'],
                 mask_in_chans=prompt_encoder_cfg['mask_in_chans']
                 )
+        
+        if settings.get('freeze_image_encoder'):
+            for param in self.image_encoder.parameters():
+                param.requires_grad = False
                 
     def forward(self, input_params):
         image = input_params['image']

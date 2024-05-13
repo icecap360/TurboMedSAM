@@ -12,7 +12,7 @@ import dataloaders
 from functools import partial
 import savers
 
-batch_size = 11
+batch_size = 8
 image_size = 1024
 encoder_embed_dim=768
 encoder_depth=12
@@ -22,7 +22,7 @@ prompt_embed_dim = 256
 vit_patch_size = 16
 
 model = models.TeacherStudentModel(
-    student=models.repvit_model_m0_6(
+    student=models.repvit_model_m0_9(
             init_cfg=None, #{
             #     "type": "pretrained",
             #     "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/repvit_sam.pt",
@@ -47,7 +47,7 @@ model = models.TeacherStudentModel(
         out_chans=prompt_embed_dim,
         init_cfg = {
             "type": "pretrained",
-            "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/medsam_image_encoder_1024.pth"
+            "checkpoint" :  "./checkpoints/medsam_image_encoder_1024.pth"
         }
         )
 )
@@ -72,12 +72,12 @@ lr_scheduler = dict(
     warmup_by_epoch = True,
     warmup_epochs = 4,
     warmup = 'constant_value',
-    warmup_iters = 40000,
+    warmup_iters = 50000,
     warmup_value = 4e-5
     )
 
 compute = dict(
-    gpu_ids = [0,1,2],
+    gpu_ids = [0,2],
     use_cpu = False,
     use_amp = True,
     mp_start_method = 'fork',
@@ -124,7 +124,7 @@ metric = metrics.NoMetric()
 custom_hooks = []
 seed = 0
 
-data_root = '/pub4/qasim/MedSAM/full_dataset_3_chnl/'
+data_root = '/pub0/qasim/MedSAM/full_dataset_3_chnl/'
 test_transform_student = v2.Compose(
     [
         v2.Normalize(mean = [0.2482501, 0.21106622, 0.20026337],     
@@ -156,10 +156,14 @@ train_transform = v2.Compose(
         v2.ToDtype(torch.float32, scale=True)
     ])
 
-train_collate_transforms = [custom_transforms.MixPatch(1.0, 256),
-    custom_transforms.NoLabelCutMix(alpha=1.0)]
-train_collate_functionals = [custom_transforms.MixPatchFunctional,
-    custom_transforms.NoLabelCutMixFunctional]
+train_collate_transforms = [
+    custom_transforms.MixPatch(1.0, 256),
+    custom_transforms.NoLabelCutMix(alpha=1.0), 
+    custom_transforms.IdentityTransform()]
+train_collate_functionals = [
+    custom_transforms.MixPatchFunctional,
+    custom_transforms.NoLabelCutMixFunctional, 
+    custom_transforms.IdentityTransformFunctional]
 
 train_pipeline = pipelines.TeacherStudentPipeline(
     train_transform, 

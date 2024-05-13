@@ -12,7 +12,7 @@ from torchvision.transforms import v2
 import savers 
 
 img_size = 1024
-batch_size = 96
+batch_size = 12
 
 model = models.LiteMedSAM(
         image_encoder = models.repvit_model_m0_9(
@@ -25,7 +25,6 @@ model = models.LiteMedSAM(
             num_classes=0
         ),
         settings=dict(
-            freeze_image_encoder=True,
             prompt_encoder=dict(
                 embed_dim=256,
                 image_embedding_size=(64, 64),
@@ -53,7 +52,7 @@ model = models.LiteMedSAM(
 optimizer = dict(
     optimizer = dict(
         type = torch.optim.AdamW,
-        lr=2e-4, 
+        lr=1e-4, 
         weight_decay=0.01),
     grad_clip = dict(max_norm=0.2, norm_type=2)
 )
@@ -73,7 +72,7 @@ lr_scheduler = dict(
     )
 
 compute = dict(
-    gpu_ids = [0],
+    gpu_ids = [0,2],
     use_cpu = False,
     use_amp = True,
     mp_start_method = 'fork',
@@ -97,14 +96,14 @@ work_dir = 'work_dir'
 exp_name = os.path.basename(__file__)[:-3]
 runner = dict(
     type= 'epoch',
-    max_epochs = 4, #300
+    max_epochs = 8, #300
     max_iters = 10000,
     val_freq_epoch = 8,
     val_freq_iter = 1000,
     save_freq_iter = 10000,
     log_freq=5,
-    resume_train = False,
-    checkpoint_path = '/home/qasim/Projects/TurboMedSAM/checkpoints/DistillRepViTm11-ViTB_aggressive_aug_epoch_4.pth',
+    resume_train = True,
+    checkpoint_path = '/pub0/qasim/TurboMedSAM/checkpoints/RepViTm11_epoch4-FrozenBB_FullDataset-Distill_ViTB_AggressiveAugmentation_epoch_4.pth',
 )
 
 loss = losses.MedSAMLoss({
