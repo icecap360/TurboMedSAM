@@ -134,6 +134,12 @@ class LiteMedSAM(BaseDetector):
             if not 'checkpoint' in self.init_cfg.keys():
                 raise Exception('Missing checkpoint')  
             state_dict = torch.load(self.init_cfg['checkpoint'])
+            if 'state_dict' in state_dict.keys():
+                state_dict = state_dict['state_dict']
+                keys = [k for k in state_dict.keys()]
+                if keys[0].startswith('module.'):
+                    state_dict = keep_keys(state_dict,"module.", [(r"^module.", "")])
+                
             self.prompt_encoder.load_state_dict(
                 keep_keys(state_dict, "prompt_encoder", [(r"^prompt_encoder.", "")]),
                 strict=self.init_cfg.get('strict') or True
