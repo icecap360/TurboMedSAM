@@ -8,3 +8,5 @@ from .LiteMedSAMEncoder import *
 from .MedSAM import *
 from .SegmentationModel import *
 from .TurboViTModel import *
+from .LighteningViTModel import *
+from .EfficientViTModel import *
