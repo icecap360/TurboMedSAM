@@ -550,7 +550,7 @@ class CompressibleHiera(nn.Module):
             return x, intermediates
 
  
-
+        return torch.moveaxis(self.reroll(x, self.stage_ends[-1], mask=mask),3,1)
         return x
 
     
@@ -621,7 +621,7 @@ class TurboViTModel(BaseModule):
         self.block_specs = [
             BlockSpec(channels=32, depth=1),
             BlockSpec(channels=144, depth=2),
-            BlockSpec(channels=192, depth=6),
+            BlockSpec(channels=192, depth=2),
             BlockSpec(channels=256, depth=2),
             ]
         self.blockspecs = HieraBlockSpecs(*self.block_specs)
@@ -687,14 +687,9 @@ class TurboViTModel(BaseModule):
             x = data_batch['image']
         else:
             x = data_batch
-        x, intermediates =  self.backbone.forward(x, return_intermediates=True)
-
-        for i in range(len(intermediates)):
-            # the outputs of TurboViT (-1,H,W,C) with mean 0 and std 1,  
-            intermediates[i] = (torch.movedim(intermediates[i], 3,1))
-            # intermediates[i] = self.relu(intermediates[i]/10.0)
-            # intermediates[i] = self.fixConvs[i](intermediates[i])
+        # x, intermediates =  self.backbone.forward(x, return_intermediates=True)
+        x =  self.backbone.forward(x, return_intermediates=False)
         if self.distillation:
-            return {'embeddings': intermediates[-1]}
+            return {'embeddings': x}
         else:
-            return intermediates[-1]
+            return x
