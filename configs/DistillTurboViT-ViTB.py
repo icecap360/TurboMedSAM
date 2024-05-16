@@ -11,6 +11,7 @@ from torchvision.transforms import v2
 import dataloaders
 from functools import partial
 import savers
+from models.projects.turbo_vit_utils.gonas.darwinai.blockspecs import BlockSpec
 
 batch_size = 6
 image_size = 1024
@@ -26,6 +27,12 @@ model = models.TeacherStudentModel(
             init_cfg=None, 
             input_size=image_size,
             distillation=True,
+            block_specs = [
+            BlockSpec(channels=32, depth=1),
+            BlockSpec(channels=144, depth=2),
+            BlockSpec(channels=192, depth=2),
+            BlockSpec(channels=256, depth=2),
+            ],
             compile=False,
             num_heads=1,
             q_pool = 2,

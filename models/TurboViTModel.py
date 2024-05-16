@@ -588,6 +588,7 @@ class TurboViTModel(BaseModule):
                 input_size,
                 num_heads,
                 compile,
+                block_specs,
                 frozen_stages = -1,
                 input_chans = 3,
                 head_mul=2.0,
@@ -618,12 +619,7 @@ class TurboViTModel(BaseModule):
         super(TurboViTModel, self).__init__(init_cfg)
         self.relu = nn.ReLU()
         self.distillation = distillation
-        self.block_specs = [
-            BlockSpec(channels=32, depth=1),
-            BlockSpec(channels=144, depth=2),
-            BlockSpec(channels=192, depth=2),
-            BlockSpec(channels=256, depth=2),
-            ]
+        self.block_specs = block_specs
         self.blockspecs = HieraBlockSpecs(*self.block_specs)
         self.model_args = dict(blockspecs=self.blockspecs, 
                                input_size=(input_size, input_size),
