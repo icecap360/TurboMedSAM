@@ -380,9 +380,9 @@ if __name__ == '__main__':
     checkpoint_path = './checkpoints/RepViTm09_epoch3_WithDistillationLoss-Distill_ViTB_AggressiveAugmentation_epoch_4.pth'
     config = '/home/qasim/Projects/TurboMedSAM/configs/CVPRMedSAMRepViTm09.py'
     
-    pred_save_dir = '/home/qasim/Projects/TurboMedSAM/results/RepViTm11_epoch7_WithDistillationLoss-Distill_ViTB_AggressiveAugmentation_epoch_4/results_npz_agg11_disillLoss'
-    png_save_dir = '/home/qasim/Projects/TurboMedSAM/results/RepViTm11_epoch7_WithDistillationLoss-Distill_ViTB_AggressiveAugmentation_epoch_4/results_overlay_agg11_disillLoss'
-    checkpoint_path = './checkpoints/RepViTm11_epoch7_WithDistillationLoss-Distill_ViTB_AggressiveAugmentation_epoch_4.pth'
+    pred_save_dir = '/home/qasim/Projects/TurboMedSAM/results/RepViTm11_epoch9_WithDistillationLoss-Distill_ViTB_AggressiveAugmentation_epoch_4/results_npz_agg11_disillLoss'
+    png_save_dir = '/home/qasim/Projects/TurboMedSAM/results/RepViTm11_epoch9_WithDistillationLoss-Distill_ViTB_AggressiveAugmentation_epoch_4/results_overlay_agg11_disillLoss'
+    checkpoint_path = './checkpoints/RepViTm11_epoch9_WithDistillationLoss-Distill_ViTB_AggressiveAugmentation_epoch_4.pth'
     config = '/home/qasim/Projects/TurboMedSAM/configs/CVPRMedSAMRepViTm11.py'
     
     # pred_save_dir = '/home/qasim/Projects/TurboMedSAM/results/lite_medsam/results_npz_agg09'
