@@ -61,7 +61,7 @@ parser.add_argument(
 )
 parser.add_argument(
     '--save_overlay',
-    default=True,
+    default=False,
     action='store_true',
     help='whether to save the overlay image'
 )
@@ -437,35 +437,20 @@ def MedSAM_infer_npz_3D(model, img_npz_file, target_length, normalize, resize_lo
         plt.tight_layout()
         plt.savefig(join(png_save_dir, npz_name.split(".")[0] + '.png'), dpi=300)
         plt.close()
- 
 
-img_size = 256
+img_size = 1024
+
 model = models.LiteMedSAM(
-    # image_encoder = models.repvit_model_m0_9(
-    #     distillation=False,
-    #     num_classes=0
-    # ),
+    image_encoder = models.repvit_model_m1_1(
+            init_cfg={
+                "type": "pretrained",
+                "checkpoint" :  "/home/qasim/Projects/TurboMedSAM/checkpoints/DistillRepViTm11-ViTB_aggressive_aug_epoch_4.pth",
+                "strict": True
+            },
+            distillation=False,
+            num_classes=0
+        ),
     settings=dict(
-        image_encoder=dict(
-                img_size=img_size,
-                in_chans=3,
-                embed_dims=[
-                    64, ## (64, 256, 256)
-                    128, ## (128, 128, 128)
-                    160, ## (160, 64, 64)
-                    320 ## (320, 64, 64) 
-                ],
-                depths=[2, 2, 6, 2],
-                num_heads=[2, 4, 5, 10],
-                window_sizes=[7, 7, 14, 7],
-                mlp_ratio=4.,
-                drop_rate=0.,
-                drop_path_rate=0.0,
-                use_checkpoint=False,
-                mbconv_expand_ratio=4.0,
-                local_conv_size=3,
-                layer_lr_decay=0.8
-                ),
         prompt_encoder=dict(
             embed_dim=256,
             image_embedding_size=(64, 64),
@@ -489,7 +474,6 @@ if __name__ == '__main__':
     img_npz_files = sorted(glob(join(data_root, '*.npz'), recursive=True))
     config = '/home/qasim/Projects/TurboMedSAM/configs/CVPRMedSAMRepViTm11.py'
     device = 'cpu'
-    img_size =  1024
     normalize = True
     resize_longest = True
     # save_overlay = False
