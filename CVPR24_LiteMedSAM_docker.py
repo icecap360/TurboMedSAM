@@ -8,15 +8,85 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import os, re
-from framework import import_module
-
+# from framework import import_module
 from matplotlib import pyplot as plt
 import cv2
 import argparse
 from collections import OrderedDict
 import pandas as pd
 from datetime import datetime
+import models
 
+#%% set seeds
+torch.set_float32_matmul_precision('high')
+torch.manual_seed(2024)
+torch.cuda.manual_seed(2024)
+np.random.seed(2024)
+
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument(
+    '-i',
+    '--input_dir',
+    type=str,
+    default='test_demo/imgs/',
+    # required=True,
+    help='root directory of the data',
+)
+parser.add_argument(
+    '-o',
+    '--output_dir',
+    type=str,
+    default='test_demo/segs/',
+    help='directory to save the prediction',
+)
+parser.add_argument(
+    '-lite_medsam_checkpoint_path',
+    type=str,
+    default="checkpoints_submission/submission.pth",
+    help='path to the checkpoint of MedSAM-Lite',
+)
+parser.add_argument(
+    '-device',
+    type=str,
+    default="cpu",
+    help='device to run the inference',
+)
+parser.add_argument(
+    '-num_workers',
+    type=int,
+    default=4,
+    help='number of workers for inference with multiprocessing',
+)
+parser.add_argument(
+    '--save_overlay',
+    default=True,
+    action='store_true',
+    help='whether to save the overlay image'
+)
+parser.add_argument(
+    '-png_save_dir',
+    type=str,
+    default='./overlay',
+    help='directory to save the overlay image'
+)
+
+args = parser.parse_args()
+
+data_root = args.input_dir
+pred_save_dir = args.output_dir
+save_overlay = args.save_overlay
+num_workers = args.num_workers
+if save_overlay:
+    assert args.png_save_dir is not None, "Please specify the directory to save the overlay image"
+    png_save_dir = args.png_save_dir
+    makedirs(png_save_dir, exist_ok=True)
+
+lite_medsam_checkpoint_path = args.lite_medsam_checkpoint_path
+makedirs(pred_save_dir, exist_ok=True)
+device = torch.device(args.device)
+image_size = 256
 
 def preprocess_img(img_3c, target_length, normalize, resize_longest,
     means = [0.2482501, 0.21106622, 0.20026337],     
@@ -58,7 +128,6 @@ def pad_image(image, target_size):
     Expects a numpy array with shape HxWxC in uint8 format.
     """
     # Pad
-    
     h, w = image.shape[0], image.shape[1]
     padh = target_size - h
     padw = target_size - w
@@ -117,7 +186,7 @@ def get_bbox(mask, bbox_shift=3):
 
     Parameters
     ----------
-    mask : numpy.ndarray
+    mask_256 : numpy.ndarray
         the mask of the resized image
 
     bbox_shift : int
@@ -166,7 +235,7 @@ def resize_box(box, original_size, target_length):
         new_box[i] = int(box[i] * ratio)
 
     return new_box
-    
+
 @torch.no_grad()
 def medsam_inference(medsam_model, img_embed, box, target_length, new_size, original_size):
     """
@@ -223,10 +292,12 @@ def MedSAM_infer_npz_2D(model, img_npz_file, target_length, normalize, resize_lo
     for idx, box in enumerate(boxes, start=1):
         box256 = resize_box(box, original_size=(H, W), target_length=target_length)
         box256 = box256[None, ...] # (1, 4)
-        medsam_mask, iou_pred = medsam_inference(model, image_embedding, box256, target_length, (newh, neww), (H, W))
+        medsam_mask, iou_pred = medsam_inference(model, image_embedding, box256, target_length, 
+                                                 (newh, neww), (H, W))
+        
         segs[medsam_mask>0] = idx
         # print(f'{npz_name}, box: {box}, predicted iou: {np.round(iou_pred.item(), 4)}')
-   
+    
     np.savez_compressed(
         join(pred_save_dir, npz_name),
         segs=segs,
@@ -251,7 +322,6 @@ def MedSAM_infer_npz_2D(model, img_npz_file, target_length, normalize, resize_lo
         plt.tight_layout()
         plt.savefig(join(png_save_dir, npz_name.split(".")[0] + '.png'), dpi=300)
         plt.close()
-
 
 def MedSAM_infer_npz_3D(model, img_npz_file, target_length, normalize, resize_longest):
     npz_name = basename(img_npz_file)
@@ -367,46 +437,68 @@ def MedSAM_infer_npz_3D(model, img_npz_file, target_length, normalize, resize_lo
         plt.tight_layout()
         plt.savefig(join(png_save_dir, npz_name.split(".")[0] + '.png'), dpi=300)
         plt.close()
+ 
+
+img_size = 256
+model = models.LiteMedSAM(
+    # image_encoder = models.repvit_model_m0_9(
+    #     distillation=False,
+    #     num_classes=0
+    # ),
+    settings=dict(
+        image_encoder=dict(
+                img_size=img_size,
+                in_chans=3,
+                embed_dims=[
+                    64, ## (64, 256, 256)
+                    128, ## (128, 128, 128)
+                    160, ## (160, 64, 64)
+                    320 ## (320, 64, 64) 
+                ],
+                depths=[2, 2, 6, 2],
+                num_heads=[2, 4, 5, 10],
+                window_sizes=[7, 7, 14, 7],
+                mlp_ratio=4.,
+                drop_rate=0.,
+                drop_path_rate=0.0,
+                use_checkpoint=False,
+                mbconv_expand_ratio=4.0,
+                local_conv_size=3,
+                layer_lr_decay=0.8
+                ),
+        prompt_encoder=dict(
+            embed_dim=256,
+            image_embedding_size=(64, 64),
+            input_image_size=(img_size, img_size),
+            mask_in_chans=16
+            ),
+        mask_decoder=dict(
+            num_multimask_outputs=3,
+            transformer_depth=2,
+            transformer_embedding_dim=256,
+            transformer_mlp_dim=2048,
+            transformer_num_heads=8,
+            transformer_dim=256,
+            iou_head_depth=3,
+            iou_head_hidden_dim=256,
+            )
+        )
+    )
 
 if __name__ == '__main__':
-    data_root = '/data/qasim/MedSAM/split_npzs_3chnl/official_val'
-    pred_save_dir = '/home/qasim/Projects/TurboMedSAM/results/RepViTm06_epoch7_withDistillationViTBep4_withDistillationRepViTm09ep2-Distill_ViTB_AggressiveAugmentation_fulldataset_epoch_2/results_npz_agg09'
-    png_save_dir = '/home/qasim/Projects/TurboMedSAM/results/RepViTm06_epoch7_withDistillationViTBep4_withDistillationRepViTm09ep2-Distill_ViTB_AggressiveAugmentation_fulldataset_epoch_2/results_overlay_agg09'
-    checkpoint_path = './checkpoints/RepViTm06_epoch7_withDistillationViTBep4_withDistillationRepViTm09ep2-Distill_ViTB_AggressiveAugmentation_fulldataset_epoch_2.pth'
-    config = '/home/qasim/Projects/TurboMedSAM/configs/CVPRMedSAMRepViTm06.py'
-    
-    pred_save_dir = '/home/qasim/Projects/TurboMedSAM/results/RepViTm09_epoch3_WithDistillationLoss-Distill_ViTB_AggressiveAugmentation_epoch_4/results_npz_agg09'
-    png_save_dir = '/home/qasim/Projects/TurboMedSAM/results/RepViTm09_epoch3_WithDistillationLoss-Distill_ViTB_AggressiveAugmentation_epoch_4/results_overlay_agg09'
-    checkpoint_path = './checkpoints/RepViTm09_epoch3_WithDistillationLoss-Distill_ViTB_AggressiveAugmentation_epoch_4.pth'
-    config = '/home/qasim/Projects/TurboMedSAM/configs/CVPRMedSAMRepViTm09.py'
-    
-    pred_save_dir = '/home/qasim/Projects/TurboMedSAM/results/RepViTm11_epoch7_WithDistillationLoss-Distill_ViTB_AggressiveAugmentation_epoch_4/results_npz_agg11_disillLoss'
-    png_save_dir = '/home/qasim/Projects/TurboMedSAM/results/RepViTm11_epoch7_WithDistillationLoss-Distill_ViTB_AggressiveAugmentation_epoch_4/results_overlay_agg11_disillLoss'
-    checkpoint_path = './checkpoints/RepViTm11_epoch7_WithDistillationLoss-Distill_ViTB_AggressiveAugmentation_epoch_4.pth'
+    img_npz_files = sorted(glob(join(data_root, '*.npz'), recursive=True))
     config = '/home/qasim/Projects/TurboMedSAM/configs/CVPRMedSAMRepViTm11.py'
-    
-    # pred_save_dir = '/home/qasim/Projects/TurboMedSAM/results/lite_medsam/results_npz_agg09'
-    # png_save_dir = '/home/qasim/Projects/TurboMedSAM/results/lite_medsam/results_overlay_agg09'
-    # checkpoint_path = './checkpoints/lite_medsam.pth'
-    # config = '/home/qasim/Projects/TurboMedSAM/configs/CVPRMedSAMLite.py'
-    
-    device = 'cuda'
+    device = 'cpu'
     img_size =  1024
     normalize = True
     resize_longest = True
-    save_overlay = False
-    measure_efficiency = True
+    # save_overlay = False
     num_workers = 4
     img_npz_files = glob(join(data_root, '*.npz'), recursive=True)
     # img_npz_files = [os.path.join(data_root, '3DBox_MR_0173.npz')]
     # img_npz_files = missing_files
-    
-    abs_config_path = os.path.join("configs", config)
-    cfg = import_module(os.path.basename(config), 
-                        abs_config_path)
-    model = cfg.model
 
-    state_dict = torch.load(checkpoint_path, map_location='cpu')
+    state_dict = torch.load(lite_medsam_checkpoint_path, map_location='cpu')
     if 'state_dict' in state_dict:
         metadata = getattr(state_dict, '_metadata', ())
         state_dict = state_dict['state_dict']
@@ -423,31 +515,22 @@ if __name__ == '__main__':
     
     if save_overlay:
         makedirs(png_save_dir, exist_ok=True)
-    #%% set seeds
-    torch.set_float32_matmul_precision('high')
-    torch.manual_seed(2024)
-    torch.cuda.manual_seed(2024)
-    np.random.seed(2024)
-
     makedirs(pred_save_dir, exist_ok=True)
     device = torch.device(device)
     
-    if measure_efficiency:
-        efficiency = OrderedDict()
-        efficiency['case'] = []
-        efficiency['time'] = []
-        for img_npz_file in tqdm(img_npz_files):
-            start_time = time()
-            if basename(img_npz_file).startswith('3D'):
-                MedSAM_infer_npz_3D(model, img_npz_file, img_size, normalize, resize_longest)
-            else:
-                MedSAM_infer_npz_2D(model, img_npz_file, img_size, normalize, resize_longest)
-            end_time = time()
-            efficiency['case'].append(basename(img_npz_file))
-            efficiency['time'].append(end_time - start_time)
-            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # print(current_time, 'file name:', basename(img_npz_file), 'time cost:', np.round(end_time - start_time, 4))
-        efficiency_df = pd.DataFrame(efficiency)
-        efficiency_df.to_csv(join(pred_save_dir, 'efficiency.csv'), index=False)
-    else:
-        raise Exception('Use other script')
+    efficiency = OrderedDict()
+    efficiency['case'] = []
+    efficiency['time'] = []
+    for img_npz_file in tqdm(img_npz_files):
+        start_time = time()
+        if basename(img_npz_file).startswith('3D'):
+            MedSAM_infer_npz_3D(model, img_npz_file, img_size, normalize, resize_longest)
+        else:
+            MedSAM_infer_npz_2D(model, img_npz_file, img_size, normalize, resize_longest)
+        end_time = time()
+        efficiency['case'].append(basename(img_npz_file))
+        efficiency['time'].append(end_time - start_time)
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # print(current_time, 'file name:', basename(img_npz_file), 'time cost:', np.round(end_time - start_time, 4))
+    efficiency_df = pd.DataFrame(efficiency)
+    efficiency_df.to_csv(join(pred_save_dir, 'efficiency.csv'), index=False)

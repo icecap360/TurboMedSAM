@@ -67,7 +67,8 @@ class EpochBasedRunner(BaseRunner):
                  use_amp=compute['use_amp'],
                  grad_clip=optimizer.get('grad_clip'),
                  resume_train=runner['resume_train'],
-                 checkpoint_path=runner.get('checkpoint_path')
+                 checkpoint_path=runner.get('checkpoint_path'),
+                 resume_dataloader=runner.get('resume_dataloader')
                  )
 
     def train_epoch(self, data_loader: DataLoader):
@@ -87,7 +88,7 @@ class EpochBasedRunner(BaseRunner):
 
         for i, data_batch in enumerate(data_loader):
             inputs, targets = data_batch[0], data_batch[1]
-            batch_size = len_dict(inputs)
+            batch_size = len(inputs['meta']['idx'])
             targets = dict_to_device(targets, self.device)
             inputs = dict_to_device(inputs, self.device)
             data_time.update(time.time() - end)
@@ -193,7 +194,7 @@ class EpochBasedRunner(BaseRunner):
         
         while self._epoch < self._max_epochs:
 
-            if not (remaining_train_loader==None):
+            if not (remaining_train_loader==None) and self.resume_dataloader:
                 remaining_train_loader.sampler.set_epoch(self._epoch)
                 self.train_epoch(data_loader=remaining_train_loader)
                 del remaining_train_loader
