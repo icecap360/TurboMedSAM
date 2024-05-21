@@ -70,7 +70,8 @@ class IterBasedRunner(BaseRunner):
                  use_amp=compute['use_amp'],
                  grad_clip=optimizer.get('grad_clip'),
                  resume_train=runner['resume_train'],
-                 checkpoint_path=runner.get('checkpoint_path')
+                 checkpoint_path=runner.get('checkpoint_path'),
+                 resume_dataloader=runner.get('resume_dataloader')
                  )
     
     def train_iter(self, inputs, targets):

@@ -131,8 +131,9 @@ def main(args):
     val_loader = create_dataloader(cfg.data,
                                     cfg.compute, 
                                     cfg.seed, distributed,  "val")
+
     remaining_train_loader = None
-    if runner.resume_train:
+    if runner.resume_train and runner.resume_dataloader:
         remaining_train_loader = create_dataloader(cfg.data, 
                                                cfg.compute,
                                                cfg.seed, 

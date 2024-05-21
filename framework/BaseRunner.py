@@ -76,7 +76,9 @@ class BaseRunner(metaclass=ABCMeta):
                  use_amp = False,
                  grad_clip = None,
                  resume_train = False,
-                 checkpoint_path = None):
+                 checkpoint_path = None,
+                 resume_dataloader=True,       
+                ):
         
         self.model = model
         self.optimizer = optimizer
@@ -98,6 +100,7 @@ class BaseRunner(metaclass=ABCMeta):
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.use_amp)
         self.resume_train = resume_train
         self.checkpoint_path = checkpoint_path
+        self.resume_dataloader = resume_dataloader
 
         # create work_dir
         if isinstance(work_dir, str):
@@ -317,14 +320,16 @@ class BaseRunner(metaclass=ABCMeta):
             
         if 'state_dict' in checkpoint:
             model_state_dict = checkpoint['state_dict']
-            if 'optimizer' in checkpoint and load_optimizer:
-                self.optimizer.load_state_dict(checkpoint['optimizer'])
+            # if 'optimizer' in checkpoint and load_optimizer:
+            #     self.optimizer.load_state_dict(checkpoint['optimizer'])
             if 'lr_scheduler' in checkpoint and load_lr_scheduler:
                 self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             if 'scaler' in checkpoint and load_scaler:
                 self.scaler.load_state_dict(checkpoint['scaler'])
             self._epoch = checkpoint['meta']['epoch']
+            self.logger.init_epoch = self._epoch
             self._iter = checkpoint['meta']['iter']
+            self.logger.init_iters = self._iter
         else:
             model_state_dict = checkpoint 
         

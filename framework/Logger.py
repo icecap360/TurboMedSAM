@@ -8,7 +8,9 @@ import time
 class Logger:
     def __init__(self):
         self.start_time = time.time()
-
+        self.init_epoch = 0
+        self.init_iters = 0
+        
     def init_message(self, work_dir, exp_name, cfg_str):
         
         current_datetime = datetime.now()
@@ -59,6 +61,8 @@ class Logger:
     
     def calc_eta_epoch(self, epoch, max_epoch, samples_processed, total_samples):
         time_now = time.time()
+        epoch = epoch - self.init_epoch
+        max_epoch = max_epoch - self.init_epoch
         percent_done = epoch/max_epoch + samples_processed/(total_samples*max_epoch)
         elapsed = time_now - self.start_time
         total_time = elapsed / percent_done
@@ -70,6 +74,7 @@ class Logger:
 
     def calc_eta_iter(self, iters, max_iters):
         time_now = time.time()
+        iters = iters - self.init_iters
         percent_done = iters/max_iters 
         elapsed = time_now - self.start_time
         total_time = elapsed / percent_done
